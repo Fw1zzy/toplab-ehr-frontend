@@ -27,12 +27,39 @@ function clearAuthCookie() {
   document.cookie = `${AUTH_COOKIE}=; path=/; max-age=0; SameSite=Strict`;
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+// ---------------------------------------------------------------------------
+// Dev bypass — set NEXT_PUBLIC_BYPASS_AUTH=true in .env to skip login
+// ---------------------------------------------------------------------------
+const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 
-  // Rehydrate from sessionStorage on mount (client only)
+const MOCK_USER: CurrentUser = {
+  id: 'bypass-user',
+  first_name: 'Dev',
+  last_name: 'User',
+  email: 'dev@toplab.local',
+  avatar: null,
+  role: 'administrator',
+  roleName: 'administrator',
+  status: 'active',
+  last_access: null,
+  last_page: null,
+  permissions: [],
+};
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<CurrentUser | null>(BYPASS_AUTH ? MOCK_USER : null);
+  const [isLoading, setIsLoading] = useState(!BYPASS_AUTH);
+
   useEffect(() => {
+    // When auth bypass is active, immediately set the cookie so the proxy
+    // middleware also allows through, then mark loading as done.
+    if (BYPASS_AUTH) {
+      setAuthCookie();
+      setIsLoading(false);
+      return;
+    }
+
+    // Rehydrate from sessionStorage on mount (client only)
     try {
       const raw = sessionStorage.getItem(SESSION_KEY);
       if (raw) {
