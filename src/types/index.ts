@@ -6,3 +6,4 @@ export * from './billing';
 export * from './inventory';
 export * from './questionnaire';
 export * from './analytics';
+export * from './medical-records';

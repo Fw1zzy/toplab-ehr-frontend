@@ -23,12 +23,18 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   pending: { label: 'Pending', className: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
   processing: { label: 'Processing', className: 'bg-blue-50 text-blue-700 ring-blue-600/20' },
   released: { label: 'Released', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
+  with_results: { label: 'With Results', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   // Invoice statuses
   draft: { label: 'Draft', className: 'bg-slate-50 text-slate-600 ring-slate-500/20' },
   issued: { label: 'Issued', className: 'bg-blue-50 text-blue-700 ring-blue-600/20' },
   unpaid: { label: 'Unpaid', className: 'bg-red-50 text-red-600 ring-red-500/20' },
   paid: { label: 'Paid', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   refunded: { label: 'Refunded', className: 'bg-purple-50 text-purple-700 ring-purple-600/20' },
+  // Payment statuses
+  failed: { label: 'Failed', className: 'bg-red-50 text-red-600 ring-red-500/20' },
+  // Medical record statuses
+  finalized: { label: 'Finalized', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
+  amended: { label: 'Amended', className: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
   // Inventory statuses
   in_stock: { label: 'In Stock', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   low_stock: { label: 'Low Stock', className: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
