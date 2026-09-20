@@ -7,6 +7,8 @@ import {
   MOCK_SERVICES,
   MOCK_DASHBOARD_METRICS,
   MOCK_ANALYTICS_DATA,
+  MOCK_PAYMENTS,
+  MOCK_MEDICAL_RECORDS,
 } from './data';
 import {
   Patient,
@@ -18,6 +20,8 @@ import {
   DashboardMetrics,
   AnalyticsData,
   AnalyticsFilter,
+  Payment,
+  MedicalRecord,
 } from '@/types';
 import { sleep } from '@/lib/utils';
 
@@ -345,5 +349,59 @@ export const mockServices = {
   async getAll(): Promise<CatalogService[]> {
     await sleep(DELAY);
     return MOCK_SERVICES;
+  },
+};
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+export const mockPayments = {
+  async getAll(params?: {
+    patientId?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: Payment[]; total: number }> {
+    await sleep(DELAY);
+    let data = [...MOCK_PAYMENTS];
+    if (params?.patientId) data = data.filter((p) => p.patient_id === params.patientId);
+    if (params?.status) data = data.filter((p) => p.status === params.status);
+    const total = data.length;
+    const page = params?.page ?? 1;
+    const limit = params?.limit ?? 10;
+    return { data: data.slice((page - 1) * limit, page * limit), total };
+  },
+
+  async getOne(id: string): Promise<Payment | null> {
+    await sleep(DELAY);
+    return MOCK_PAYMENTS.find((p) => p.id === id) ?? null;
+  },
+};
+
+// ─── Medical Records ──────────────────────────────────────────────────────────
+
+export const mockMedicalRecords = {
+  async getAll(params?: {
+    patientId?: string;
+    recordType?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: MedicalRecord[]; total: number }> {
+    await sleep(DELAY);
+    let data = [...MOCK_MEDICAL_RECORDS];
+    if (params?.patientId) data = data.filter((r) => r.patient_id === params.patientId);
+    if (params?.recordType && params.recordType !== 'all') {
+      data = data.filter((r) => r.record_type === params.recordType);
+    }
+    if (params?.status) data = data.filter((r) => r.status === params.status);
+    const total = data.length;
+    const page = params?.page ?? 1;
+    const limit = params?.limit ?? 10;
+    return { data: data.slice((page - 1) * limit, page * limit), total };
+  },
+
+  async getOne(id: string): Promise<MedicalRecord | null> {
+    await sleep(DELAY);
+    return MOCK_MEDICAL_RECORDS.find((r) => r.id === id) ?? null;
   },
 };
