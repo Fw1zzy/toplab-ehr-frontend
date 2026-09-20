@@ -35,6 +35,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   // Medical record statuses
   finalized: { label: 'Finalized', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   amended: { label: 'Amended', className: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
+  // Staff statuses
+  on_leave: { label: 'On Leave', className: 'bg-violet-50 text-violet-700 ring-violet-600/20' },
   // Inventory statuses
   in_stock: { label: 'In Stock', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   low_stock: { label: 'Low Stock', className: 'bg-amber-50 text-amber-700 ring-amber-600/20' },

@@ -11,7 +11,6 @@ import {
   FlaskConical,
   FileText,
   ListOrdered,
-  Stethoscope,
   TestTube,
   Brain,
   CreditCard,
@@ -55,7 +54,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: 'Clinical',
     items: [
       { label: 'Patient Queue', href: '/queue', icon: ListOrdered },
-      { label: 'Treatments', href: '/treatments', icon: Stethoscope },
       { label: 'Lab Results', href: '/lab-results', icon: TestTube },
       { label: 'AI Clinical Tools', href: '/ai-clinical-tools', icon: Brain },
     ],
