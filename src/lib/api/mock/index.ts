@@ -181,7 +181,7 @@ export const mockPatients = {
       medical_history: data.medical_history ?? null,
       family_history: data.family_history ?? null,
       social_history: data.social_history ?? null,
-      status: 'active',
+      status: data.status ?? 'active',
       branch: data.branch ?? 'Main Branch',
       user_id: null,
     };

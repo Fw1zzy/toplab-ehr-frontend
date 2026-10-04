@@ -11,6 +11,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSkeleton, TableSkeleton } from '@/components/ui/LoadingSkeleton';
+import { AddPatientForm } from '@/components/patients/AddPatientForm';
 import { formatDate, formatCurrency, getPatientAge, getPatientFullName } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { Encounter, LabResult, Invoice } from '@/types';
@@ -28,6 +29,7 @@ export default function PatientProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
+  const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const patientQuery = usePatient(id);
   const labsQuery = usePatientLabResults(id);
@@ -70,16 +72,25 @@ export default function PatientProfilePage() {
 
   return (
     <div className="space-y-5">
-      {/* Back */}
-      <button
-        type="button"
-        onClick={() => router.push('/patients')}
-        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
-        id="back-to-patients"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Back to Patients
-      </button>
+      {/* Header Actions */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => router.push('/patients')}
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+          id="back-to-patients"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Patients
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsEditFormOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          Edit Patient
+        </button>
+      </div>
 
       {/* Patient Header */}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -167,8 +178,6 @@ export default function PatientProfilePage() {
                     ['Nationality', patient.nationality ?? '—'],
                     ['Religion', patient.religion ?? '—'],
                     ['Blood Type', patient.blood_type ?? '—'],
-                    ['PhilHealth', patient.philhealth_number ?? '—'],
-                    ['SSS', patient.sss_number ?? '—'],
                   ].map(([label, value]) => (
                     <div key={label}>
                       <p className="text-slate-400">{label}</p>
@@ -392,6 +401,12 @@ export default function PatientProfilePage() {
           )}
         </div>
       </div>
+
+      <AddPatientForm 
+        open={isEditFormOpen} 
+        onOpenChange={setIsEditFormOpen} 
+        patient={patient} 
+      />
     </div>
   );
 }

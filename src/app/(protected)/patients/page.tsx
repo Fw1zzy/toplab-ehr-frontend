@@ -13,6 +13,7 @@ import { usePatients } from '@/lib/queries/usePatients';
 import { formatDate, getPatientAge, getPatientFullName } from '@/lib/utils';
 import { Patient } from '@/types';
 import { Users } from 'lucide-react';
+import { AddPatientForm } from '@/components/patients/AddPatientForm';
 
 const PAGE_SIZE = 10;
 
@@ -21,6 +22,7 @@ export default function PatientsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
+  const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 
   const { data, isLoading, error } = usePatients({
     search,
@@ -55,6 +57,7 @@ export default function PatientsPage() {
             </button>
             <button
               type="button"
+              onClick={() => setIsAddFormOpen(true)}
               className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
               id="add-patient-btn"
             >
@@ -206,6 +209,11 @@ export default function PatientsPage() {
           </>
         )}
       </div>
+
+      <AddPatientForm 
+        open={isAddFormOpen} 
+        onOpenChange={setIsAddFormOpen} 
+      />
     </div>
   );
 }
