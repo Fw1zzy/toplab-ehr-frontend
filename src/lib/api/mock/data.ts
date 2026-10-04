@@ -348,6 +348,10 @@ export const MOCK_ENCOUNTERS: Encounter[] = [
     queue_number: 2,
     waiting_since: null,
     ai_summary: null,
+    encounter_type: 'PEME',
+    company: 'Company A',
+    corporate_request: 'PEME (Newly Hired)',
+    payment_route: 'Company Billed',
   },
   {
     id: 'enc-003',

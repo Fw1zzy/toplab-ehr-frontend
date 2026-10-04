@@ -26,6 +26,11 @@ export interface Encounter {
   queue_number: number | null;
   waiting_since: string | null;
   ai_summary: string | null;
+  encounter_type?: 'OPD' | 'PEME' | 'APE';
+  company?: string | null;
+  corporate_request?: string | null;
+  payment_route?: 'Personal Upfront' | 'Company Billed' | null;
+  services_selected?: { name: string; price: number }[];
 }
 
 export interface EncounterPatient {

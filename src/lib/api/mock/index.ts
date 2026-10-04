@@ -221,6 +221,36 @@ export const mockEncounters = {
     await sleep(DELAY);
     return MOCK_ENCOUNTERS.find((e) => e.id === id) ?? null;
   },
+
+  async create(data: Partial<Encounter>): Promise<Encounter> {
+    await sleep(DELAY);
+    const newEncounter: Encounter = {
+      id: `enc-${Date.now()}`,
+      date_created: new Date().toISOString(),
+      date_updated: null,
+      encounter_date: data.encounter_date ?? new Date().toISOString(),
+      patient_id: data.patient_id!,
+      provider_id: data.provider_id ?? null,
+      provider_name: data.provider_name ?? null,
+      chief_complaint: data.chief_complaint ?? null,
+      clinical_notes: data.clinical_notes ?? null,
+      diagnosis: data.diagnosis ?? null,
+      service: data.service ?? null,
+      service_id: data.service_id ?? null,
+      status: data.status ?? 'in_progress',
+      branch: data.branch ?? 'Main Branch',
+      queue_number: data.queue_number ?? MOCK_ENCOUNTERS.length + 1,
+      waiting_since: data.waiting_since ?? null,
+      ai_summary: data.ai_summary ?? null,
+      encounter_type: data.encounter_type ?? 'OPD',
+      company: data.company ?? null,
+      corporate_request: data.corporate_request ?? null,
+      payment_route: data.payment_route ?? null,
+      services_selected: data.services_selected ?? [],
+    };
+    MOCK_ENCOUNTERS.unshift(newEncounter); // Add to beginning so it appears at top
+    return newEncounter;
+  },
 };
 
 // ─── Lab Results ──────────────────────────────────────────────────────────────

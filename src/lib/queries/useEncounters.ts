@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 export const encounterKeys = {
@@ -28,5 +28,16 @@ export function useEncounter(id: string | undefined) {
     queryFn: () => api.encounters.getOne(id!),
     enabled: !!id,
     staleTime: 60_000,
+  });
+}
+
+export function useCreateEncounter() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: any) => api.encounters.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: encounterKeys.all });
+    },
   });
 }
