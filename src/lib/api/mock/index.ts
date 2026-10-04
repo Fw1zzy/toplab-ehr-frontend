@@ -305,6 +305,41 @@ export const mockInvoices = {
     await sleep(DELAY);
     return MOCK_INVOICES.find((i) => i.id === id) ?? null;
   },
+
+  async create(data: Partial<Invoice>): Promise<Invoice> {
+    await sleep(DELAY);
+    const newInvoice: Invoice = {
+      id: `inv-${Date.now()}`,
+      date_created: new Date().toISOString(),
+      date_updated: null,
+      invoice_number: data.invoice_number ?? `INV-${Date.now()}`,
+      patient_id: data.patient_id!,
+      company_id: data.company_id ?? null,
+      type: data.type ?? 'individual',
+      status: data.status ?? 'unpaid',
+      invoice_date: data.invoice_date ?? new Date().toISOString(),
+      due_date: data.due_date ?? new Date().toISOString(),
+      subtotal: data.subtotal ?? 0,
+      discount: data.discount ?? 0,
+      tax: data.tax ?? 0,
+      total: data.total ?? 0,
+      paid_amount: data.paid_amount ?? 0,
+      balance: data.balance ?? 0,
+      notes: data.notes ?? null,
+      branch: data.branch ?? 'Main Branch',
+      created_by: data.created_by ?? null,
+    };
+    MOCK_INVOICES.unshift(newInvoice);
+    return newInvoice;
+  },
+
+  async update(id: string, data: Partial<Invoice>): Promise<Invoice> {
+    await sleep(DELAY);
+    const idx = MOCK_INVOICES.findIndex((i) => i.id === id);
+    if (idx === -1) throw new Error('Invoice not found');
+    MOCK_INVOICES[idx] = { ...MOCK_INVOICES[idx], ...data, date_updated: new Date().toISOString() };
+    return MOCK_INVOICES[idx];
+  },
 };
 
 // ─── Inventory ────────────────────────────────────────────────────────────────

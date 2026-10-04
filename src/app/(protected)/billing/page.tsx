@@ -133,7 +133,7 @@ export default function BillingPage() {
                   {filtered.map((inv: Invoice) => {
                     const name = getPatientName(inv.patient_id);
                     return (
-                      <tr key={inv.id} className="hover:bg-slate-50/60 cursor-pointer transition-colors" onClick={() => router.push(`/billing/invoices/${inv.id}`)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/billing/invoices/${inv.id}`); }}>
+                      <tr key={inv.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="px-5 py-3.5 text-xs font-mono text-blue-600 font-medium">{inv.invoice_number}</td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
@@ -141,7 +141,7 @@ export default function BillingPage() {
                             <span className="text-xs font-medium text-slate-900">{name}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-xs text-slate-600 capitalize">{inv.type}</td>
+                        <td className="px-4 py-3.5 text-xs text-slate-600 capitalize">{inv.type === 'company' ? 'Corporate' : 'Outpatient'}</td>
                         <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">{formatDate(inv.invoice_date)}</td>
                         <td className="px-4 py-3.5 text-xs font-semibold text-slate-900 text-right tabular-nums">{formatCurrency(inv.total)}</td>
                         <td className="px-4 py-3.5 text-xs text-right tabular-nums">

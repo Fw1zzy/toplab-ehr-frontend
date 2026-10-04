@@ -324,7 +324,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
                         <label htmlFor="company" className="text-xs font-medium text-slate-700">Company</label>
                         <select
                           id="company"
-                          required={encounterType !== 'OPD'}
+                          required={true}
                           value={company}
                           onChange={(e) => setCompany(e.target.value)}
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
@@ -341,7 +341,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
                         <label htmlFor="corporateRequest" className="text-xs font-medium text-slate-700">Corporate Request</label>
                         <select
                           id="corporateRequest"
-                          required={encounterType !== 'OPD'}
+                          required={true}
                           value={corporateRequest}
                           onChange={(e) => setCorporateRequest(e.target.value)}
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"

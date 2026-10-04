@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Receipt } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -45,6 +46,7 @@ const INVOICE_TABS = [
 const PAGE_SIZE = 10;
 
 export default function InvoicesPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('corporate');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -178,7 +180,11 @@ export default function InvoicesPage() {
                       return (
                         <tr
                           key={inv.id}
-                          className="hover:bg-slate-50/60 transition-colors"
+                          className="hover:bg-slate-50/60 cursor-pointer transition-colors"
+                          onClick={() => router.push(`/billing/invoices/${inv.id}`)}
+                          role="link"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/billing/invoices/${inv.id}`); }}
                         >
                           <td className="px-5 py-3.5 text-xs font-medium text-blue-600">
                             {companyName}
@@ -226,7 +232,11 @@ export default function InvoicesPage() {
                     {paged.map((inv: Invoice) => (
                       <tr
                         key={inv.id}
-                        className="hover:bg-slate-50/60 transition-colors"
+                        className="hover:bg-slate-50/60 cursor-pointer transition-colors"
+                        onClick={() => router.push(`/billing/invoices/${inv.id}`)}
+                        role="link"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/billing/invoices/${inv.id}`); }}
                       >
                         <td className="px-5 py-3.5 text-xs font-medium text-slate-900">
                           {getPatientFirstName(inv.patient_id)}
