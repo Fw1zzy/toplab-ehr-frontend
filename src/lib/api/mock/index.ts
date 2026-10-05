@@ -9,6 +9,7 @@ import {
   MOCK_ANALYTICS_DATA,
   MOCK_PAYMENTS,
   MOCK_MEDICAL_RECORDS,
+  MOCK_COMPANIES,
 } from './data';
 import {
   Patient,
@@ -22,6 +23,7 @@ import {
   AnalyticsFilter,
   Payment,
   MedicalRecord,
+  Company,
 } from '@/types';
 import { sleep } from '@/lib/utils';
 
@@ -468,5 +470,25 @@ export const mockMedicalRecords = {
   async getOne(id: string): Promise<MedicalRecord | null> {
     await sleep(DELAY);
     return MOCK_MEDICAL_RECORDS.find((r) => r.id === id) ?? null;
+  },
+};
+
+// ─── Companies ─────────────────────────────────────────────────────────────
+
+export const mockCompanies = {
+  async getAll() {
+    await sleep(DELAY);
+    return { data: MOCK_COMPANIES, total: MOCK_COMPANIES.length };
+  },
+  async create(data: Partial<Company>) {
+    await sleep(DELAY);
+    const newCompany: Company = {
+      id: crypto.randomUUID(),
+      name: data.name!,
+      contract_status: data.contract_status!,
+      billing_address: data.billing_address!,
+    };
+    MOCK_COMPANIES.unshift(newCompany);
+    return newCompany;
   },
 };

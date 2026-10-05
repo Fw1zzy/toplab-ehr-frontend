@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useCreatePatient, useUpdatePatient } from '@/lib/queries/usePatients';
+import { useCompanies } from '@/lib/queries/useCompanies';
 import { Patient } from '@/types';
 
 interface AddPatientFormProps {
@@ -94,6 +95,9 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
   const { mutateAsync: createPatient, isPending: isCreating } = useCreatePatient();
   const { mutateAsync: updatePatient, isPending: isUpdating } = useUpdatePatient();
   const isPending = isCreating || isUpdating;
+
+  const { data: companiesData } = useCompanies();
+  const companiesList = companiesData?.data ?? [];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -425,9 +429,9 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     >
                       <option value="" disabled>Select an item...</option>
-                      <option value="Company A">Company A</option>
-                      <option value="Company B">Company B</option>
-                      <option value="Company C">Company C</option>
+                      {companiesList.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
                     </select>
                   </div>
                   

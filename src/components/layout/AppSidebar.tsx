@@ -24,6 +24,8 @@ import {
   ChevronRight,
   Activity,
   Cpu,
+  Building2,
+  ClipboardCheck,
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -72,6 +74,13 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Inventory', href: '/inventory', icon: Package },
       { label: 'Services', href: '/services', icon: Activity },
       { label: 'Staff', href: '/staff', icon: Users },
+    ],
+  },
+  {
+    title: 'Corporate',
+    items: [
+      { label: 'Companies', href: '/companies', icon: Building2 },
+      { label: 'Corporate Requests', href: '/corporate-requests', icon: ClipboardCheck },
     ],
   },
   {

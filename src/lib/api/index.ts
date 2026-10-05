@@ -36,6 +36,7 @@ export const api = {
   services: adapter.mockServices,
   payments: adapter.mockPayments,
   medicalRecords: adapter.mockMedicalRecords,
+  companies: adapter.mockCompanies,
 };
 
 export type Api = typeof api;

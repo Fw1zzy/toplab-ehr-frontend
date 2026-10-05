@@ -1,6 +1,7 @@
 export type PatientStatus = 'active' | 'inactive' | 'deceased';
 export type Sex = 'male' | 'female' | 'other';
 export type CivilStatus = 'single' | 'married' | 'widowed' | 'separated';
+import { Company } from './corporate';
 
 export interface Patient {
   id: string;
@@ -37,15 +38,7 @@ export interface Patient {
   user_id: string | null; // directus_users FK
 }
 
-export interface Company {
-  id: string;
-  name: string;
-  address: string | null;
-  contact_number: string | null;
-  email: string | null;
-  tin: string | null;
-  status: 'active' | 'inactive';
-}
+
 
 export interface CompanyPatient {
   id: string;

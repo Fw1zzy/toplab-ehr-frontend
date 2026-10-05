@@ -11,6 +11,7 @@ import {
   AnalyticsData,
   Payment,
   MedicalRecord,
+  Company,
 } from '@/types';
 import { differenceInYears, subDays, subMonths, format } from 'date-fns';
 
@@ -1355,4 +1356,19 @@ export const MOCK_MEDICAL_RECORDS: MedicalRecord[] = [
     status: 'finalized',
     branch: 'Branch 2',
   },
+];
+
+export let MOCK_COMPANIES: Company[] = [
+  {
+    id: 'e7b1c34a-9d22-48f5-b96c-123456789abc',
+    name: 'TechFlow Solutions',
+    contract_status: 'Active',
+    billing_address: '123 Innovation Drive, Tech Park, Cityville',
+  },
+  {
+    id: 'c4e2f89d-7a56-41b3-a129-9876543210fe',
+    name: 'Global Industries Inc.',
+    contract_status: 'Inactive',
+    billing_address: '456 Corporate Blvd, Suite 200, Business City',
+  }
 ];
