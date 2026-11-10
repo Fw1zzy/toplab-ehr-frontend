@@ -1,25 +1,20 @@
 export interface DashboardMetrics {
   totalPatients: number;
-  todayAppointments: number;
-  patientsWaiting: number;
+  todayEncounters: number;
+  inProgressEncounters: number;
   completedEncounters: number;
   pendingLabResults: number;
-  todayRevenue: number;
+  paidInvoiceValue: number;
 }
 
 export interface AnalyticsFilter {
-  dateFrom: string;
-  dateTo: string;
-  branch?: string;
-  service?: string;
-  provider?: string;
-  labCategory?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
-export interface PatientVisitDataPoint {
+export interface EncountersByDate {
   date: string;
-  visits: number;
-  new_patients: number;
+  encounters: number;
 }
 
 export interface DemographicsData {
@@ -38,34 +33,35 @@ export interface LabTestsByCategory {
   count: number;
 }
 
-export interface AppointmentStatusData {
+export interface EncounterStatusData {
   status: string;
   count: number;
 }
 
-export interface RevenueDataPoint {
-  date: string;
-  revenue: number;
-  invoices: number;
+export interface InvoiceStatusCount {
+  status: string;
+  count: number;
 }
 
 export interface AnalyticsData {
   kpis: {
     totalPatients: number;
-    newPatients: number;
     totalEncounters: number;
     completedEncounters: number;
     labTests: number;
-    avgWaitingMinutes: number;
-    revenue: number;
+    paidInvoiceValue: number;
+    totalInvoices: number;
+    paidInvoices: number;
+    totalInvoiced: number;
+    issuedUnpaidInvoiceValue: number;
   };
-  patientVisits: PatientVisitDataPoint[];
+  encountersOverTime: EncountersByDate[];
   demographics: {
     byAge: DemographicsData[];
     bySex: DemographicsData[];
   };
   encountersByService: EncountersByService[];
   labTestsByCategory: LabTestsByCategory[];
-  appointmentStatus: AppointmentStatusData[];
-  revenue: RevenueDataPoint[];
+  encounterStatus: EncounterStatusData[];
+  invoiceStatus: InvoiceStatusCount[];
 }

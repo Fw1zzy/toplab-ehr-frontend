@@ -3,10 +3,11 @@
 import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useCreatePatient, useUpdatePatient } from '@/lib/queries/usePatients';
 import { useCompanies } from '@/lib/queries/useCompanies';
 import { Patient } from '@/types';
+import Image from 'next/image';
 
 interface AddPatientFormProps {
   open: boolean;
@@ -14,83 +15,42 @@ interface AddPatientFormProps {
   patient?: Patient;
 }
 
-export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormProps) {
-  // Form State
-  const [formData, setFormData] = useState({
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    suffix: '',
-    dateOfBirth: '',
-    sex: '',
-    civilStatus: '',
-    address: '',
-    mobileNumber: '',
-    email: '',
-    company: '',
-    validIdPresented: '',
-    validIdNumber: '',
-    status: 'active',
-    emergencyContactName: '',
-    emergencyContactRelationship: '',
-    emergencyContactNumber: '',
-    bloodType: '',
-    nationality: '',
-    religion: '',
-  });
+function initialFormData(patient?: Patient) {
+  if (!patient) return {
+    firstName: '', middleName: '', lastName: '', suffix: '', dateOfBirth: '', sex: '', civilStatus: '',
+    address: '', mobileNumber: '', email: '', company: '', validIdPresented: '', validIdNumber: '',
+  };
+  return {
+    firstName: patient.first_name ?? '',
+    middleName: patient.middle_name ?? '',
+    lastName: patient.last_name ?? '',
+    suffix: patient.suffix ?? '',
+    dateOfBirth: patient.date_of_birth ?? '',
+    sex: patient.sex ?? '',
+    civilStatus: patient.civil_status
+      ? patient.civil_status === 'widowed'
+        ? 'Widow/Widower'
+        : patient.civil_status[0].toUpperCase() + patient.civil_status.slice(1)
+      : '',
+    address: patient.address ?? '',
+    mobileNumber: patient.contact_number ?? '',
+    email: patient.email ?? '',
+    company: patient.company_id ?? '',
+    validIdPresented: patient.valid_id_presented ?? '',
+    validIdNumber: patient.valid_id_number ?? '',
+  };
+}
 
-  useEffect(() => {
-    if (open) {
-      if (patient) {
-        setFormData({
-          firstName: patient.first_name ?? '',
-          middleName: patient.middle_name ?? '',
-          lastName: patient.last_name ?? '',
-          suffix: patient.suffix ?? '',
-          dateOfBirth: patient.date_of_birth ?? '',
-          sex: patient.sex ?? '',
-          civilStatus: patient.civil_status ?? '',
-          address: patient.address ?? '',
-          mobileNumber: patient.contact_number ?? '',
-          email: patient.email ?? '',
-          company: '',
-          validIdPresented: '',
-          validIdNumber: '',
-          status: patient.status ?? 'active',
-          emergencyContactName: patient.emergency_contact_name ?? '',
-          emergencyContactRelationship: patient.emergency_contact_relationship ?? '',
-          emergencyContactNumber: patient.emergency_contact_number ?? '',
-          bloodType: patient.blood_type ?? '',
-          nationality: patient.nationality ?? '',
-          religion: patient.religion ?? '',
-        });
-      } else {
-        // Reset form for new patient
-        setFormData({
-          firstName: '',
-          middleName: '',
-          lastName: '',
-          suffix: '',
-          dateOfBirth: '',
-          sex: '',
-          civilStatus: '',
-          address: '',
-          mobileNumber: '',
-          email: '',
-          company: '',
-          validIdPresented: '',
-          validIdNumber: '',
-          status: 'active',
-          emergencyContactName: '',
-          emergencyContactRelationship: '',
-          emergencyContactNumber: '',
-          bloodType: '',
-          nationality: '',
-          religion: '',
-        });
-      }
-    }
-  }, [open, patient]);
+export function AddPatientForm(props: AddPatientFormProps) {
+  return <PatientForm key={`${props.open ? 'open' : 'closed'}-${props.patient?.id ?? 'new'}`} {...props} />;
+}
+
+function PatientForm({ open, onOpenChange, patient }: AddPatientFormProps) {
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // Form State
+  const [formData, setFormData] = useState(() => initialFormData(patient));
 
   const { mutateAsync: createPatient, isPending: isCreating } = useCreatePatient();
   const { mutateAsync: updatePatient, isPending: isUpdating } = useUpdatePatient();
@@ -104,8 +64,25 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setSubmitError(null);
+    setPhotoFile(file);
+    setPhotoPreview(null);
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) {
+      setPhotoFile(null);
+      setSubmitError('Choose a JPEG, PNG, or WebP photo smaller than 8 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => { if (typeof reader.result === 'string') setPhotoPreview(reader.result); };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     try {
       const payload = {
         first_name: formData.firstName,
@@ -113,28 +90,25 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
         last_name: formData.lastName,
         suffix: formData.suffix || null,
         date_of_birth: formData.dateOfBirth,
-        sex: formData.sex.toLowerCase() as any,
-        civil_status: formData.civilStatus.toLowerCase() as any,
+        sex: formData.sex.toLowerCase() as Patient['sex'],
+        civil_status: (formData.civilStatus.toLowerCase() === 'widow/widower' ? 'widowed' : formData.civilStatus.toLowerCase()) as Patient['civil_status'],
         address: formData.address || null,
         contact_number: formData.mobileNumber,
-        email: formData.email || null,
-        status: formData.status as any,
-        emergency_contact_name: formData.emergencyContactName || null,
-        emergency_contact_relationship: formData.emergencyContactRelationship || null,
-        emergency_contact_number: formData.emergencyContactNumber || null,
-        blood_type: formData.bloodType || null,
-        nationality: formData.nationality || null,
-        religion: formData.religion || null,
+        email: formData.email,
+        company_id: formData.company || null,
+        valid_id_presented: formData.validIdPresented || null,
+        valid_id_number: formData.validIdNumber || null,
       };
 
       if (patient) {
-        await updatePatient({ id: patient.id, data: payload });
+        await updatePatient({ id: patient.id, data: payload, photo: photoFile ?? undefined });
       } else {
-        await createPatient(payload);
+        await createPatient({ data: payload, photo: photoFile ?? undefined });
       }
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to save patient', error);
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save patient to the EHR.');
     }
   };
 
@@ -149,7 +123,7 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                 {patient ? 'Edit Patient' : 'Add New Patient'}
               </Dialog.Title>
               <Dialog.Description className="text-sm text-slate-500 mt-1">
-                {patient ? 'Update the patient\'s information.' : 'Enter the patient\'s personal and contact information.'}
+                {patient ? 'Update the patient\'s information.' : 'Enter the patient\'s information. A Patient-role EHR user will also be created; password setup is handled through the EHR reset flow.'}
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -185,11 +159,12 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                   </div>
                   
                   <div className="space-y-1.5">
-                    <label htmlFor="middleName" className="text-xs font-medium text-slate-700">Middle Name</label>
+                    <label htmlFor="middleName" className="text-xs font-medium text-slate-700">Middle Name <span className="text-red-500">*</span></label>
                     <input
                       type="text"
                       id="middleName"
                       name="middleName"
+                      required
                       value={formData.middleName}
                       onChange={handleChange}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
@@ -268,59 +243,13 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     >
                       <option value="" disabled>Select status</option>
-                      <option value="single">Single</option>
-                      <option value="married">Married</option>
-                      <option value="widow/widower">Widow/Widower</option>
-                      <option value="separated">Separated</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                      <option value="Widow/Widower">Widow/Widower</option>
+                      <option value="Separated">Separated</option>
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label htmlFor="nationality" className="text-xs font-medium text-slate-700">Nationality</label>
-                    <input
-                      type="text"
-                      id="nationality"
-                      name="nationality"
-                      value={formData.nationality}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-                      placeholder="e.g. Filipino"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label htmlFor="religion" className="text-xs font-medium text-slate-700">Religion</label>
-                    <input
-                      type="text"
-                      id="religion"
-                      name="religion"
-                      value={formData.religion}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-                      placeholder="e.g. Catholic"
-                    />
-                  </div>
-                  
-                  <div className="space-y-1.5">
-                    <label htmlFor="bloodType" className="text-xs font-medium text-slate-700">Blood Type</label>
-                    <select
-                      id="bloodType"
-                      name="bloodType"
-                      value={formData.bloodType}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="">Unknown</option>
-                      <option value="A+">A+</option>
-                      <option value="A-">A-</option>
-                      <option value="B+">B+</option>
-                      <option value="B-">B-</option>
-                      <option value="O+">O+</option>
-                      <option value="O-">O-</option>
-                      <option value="AB+">AB+</option>
-                      <option value="AB-">AB-</option>
-                    </select>
-                  </div>
                 </div>
               </section>
 
@@ -361,6 +290,7 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                       type="email"
                       id="email"
                       name="email"
+                      required
                       value={formData.email}
                       onChange={handleChange}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
@@ -370,47 +300,14 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                 </div>
               </section>
 
-              {/* Emergency Contact */}
               <section>
-                <h3 className="text-sm font-semibold text-slate-900 mb-4 border-b border-slate-100 pb-2">Emergency Contact</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h3 className="text-sm font-semibold text-slate-900 mb-4 border-b border-slate-100 pb-2">Patient Photo</h3>
+                <div className="flex flex-wrap items-center gap-4">
+                  {photoPreview && <Image src={photoPreview} alt="Selected patient avatar" width={72} height={72} unoptimized className="h-18 w-18 rounded-full object-cover ring-2 ring-blue-100" />}
                   <div className="space-y-1.5">
-                    <label htmlFor="emergencyContactName" className="text-xs font-medium text-slate-700">Contact Name</label>
-                    <input
-                      type="text"
-                      id="emergencyContactName"
-                      name="emergencyContactName"
-                      value={formData.emergencyContactName}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-                      placeholder="e.g. Maria Cruz"
-                    />
-                  </div>
-                  
-                  <div className="space-y-1.5">
-                    <label htmlFor="emergencyContactRelationship" className="text-xs font-medium text-slate-700">Relationship</label>
-                    <input
-                      type="text"
-                      id="emergencyContactRelationship"
-                      name="emergencyContactRelationship"
-                      value={formData.emergencyContactRelationship}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-                      placeholder="e.g. Spouse"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label htmlFor="emergencyContactNumber" className="text-xs font-medium text-slate-700">Contact Number</label>
-                    <input
-                      type="tel"
-                      id="emergencyContactNumber"
-                      name="emergencyContactNumber"
-                      value={formData.emergencyContactNumber}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-                      placeholder="+63"
-                    />
+                    <label htmlFor="patientPhoto" className="text-xs font-medium text-slate-700">Upload avatar photo</label>
+                    <input id="patientPhoto" type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-700" />
+                    <p className="text-[11px] text-slate-500">Saved to the linked Patient-role EHR user&apos;s avatar. JPEG, PNG, or WebP up to 8 MB.</p>
                   </div>
                 </div>
               </section>
@@ -428,29 +325,13 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                       onChange={handleChange}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     >
-                      <option value="" disabled>Select an item...</option>
+                      <option value="">No company</option>
                       {companiesList.map(c => (
-                        <option key={c.id} value={c.name}>{c.name}</option>
+                        <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                   </div>
                   
-                  <div className="space-y-1.5">
-                    <label htmlFor="status" className="text-xs font-medium text-slate-700">Status <span className="text-red-500">*</span></label>
-                    <select
-                      id="status"
-                      name="status"
-                      required
-                      value={formData.status}
-                      onChange={handleChange}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="deceased">Deceased</option>
-                    </select>
-                  </div>
-
                   <div className="space-y-1.5">
                     <label htmlFor="validIdPresented" className="text-xs font-medium text-slate-700">Valid ID Presented</label>
                     <select
@@ -462,7 +343,7 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                     >
                       <option value="" disabled>Select ID type</option>
                       <option value="Passport">Passport</option>
-                      <option value="Driver's License">Driver's License</option>
+                      <option value="Driver&apos;s License">Driver&apos;s License</option>
                       <option value="National ID">National ID</option>
                       <option value="SSS/GSIS">SSS / GSIS</option>
                       <option value="Other">Other</option>
@@ -496,6 +377,7 @@ export function AddPatientForm({ open, onOpenChange, patient }: AddPatientFormPr
                 Cancel
               </button>
             </Dialog.Close>
+            {submitError && <p role="alert" className="mr-auto text-xs text-red-600">{submitError}</p>}
             <button
               type="submit"
               form="add-patient-form"

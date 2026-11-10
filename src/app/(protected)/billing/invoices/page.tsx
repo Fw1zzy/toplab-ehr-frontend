@@ -9,75 +9,65 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
 import { useInvoices } from '@/lib/queries/useBillingInventory';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { formatDate, getPatientFullName } from '@/lib/utils';
+import { usePatients } from '@/lib/queries/usePatients';
+import { useCompanies } from '@/lib/queries/useCompanies';
+import { usePreferences } from '@/lib/auth/PreferencesProvider';
+import { formatCurrency } from '@/lib/utils';
 import { Invoice } from '@/types';
 import { cn } from '@/lib/utils';
 
-function getPatientName(patientId: string | object): string {
-  if (typeof patientId === 'object') return '';
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p ? getPatientFullName(p) : String(patientId);
+function getPatientName(patientId: string | object, names: Map<string, string>, isLoading: boolean): string {
+  if (typeof patientId === 'object' && patientId) {
+    const patient = patientId as { id?: string; first_name?: string; last_name?: string };
+    return [patient.first_name, patient.last_name].filter(Boolean).join(' ') || names.get(patient.id ?? '') || (isLoading ? 'Loading patient...' : 'Unknown patient');
+  }
+  return names.get(patientId) ?? (isLoading ? 'Loading patient...' : 'Unknown patient');
 }
-
-function getPatientFirstName(patientId: string | object): string {
-  if (typeof patientId === 'object') return '';
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p?.first_name ?? '';
-}
-
-function getPatientLastName(patientId: string | object): string {
-  if (typeof patientId === 'object') return '';
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p?.last_name ?? '';
-}
-
-// Mock company data based on company_id references
-const COMPANIES: Record<string, string> = {
-  'company-001': 'Zyberlab IT Solutions',
-  'company-002': 'adrescompany, adrescomp...',
-};
 
 const INVOICE_TABS = [
   { id: 'corporate', label: 'Corporate Invoices' },
   { id: 'outpatient', label: 'Outpatient Invoices' },
 ];
 
-const PAGE_SIZE = 10;
-
 export default function InvoicesPage() {
+  const { preferences } = usePreferences();
+  const PAGE_SIZE = preferences.rowsPerPage;
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('corporate');
+  const [statusTab, setStatusTab] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
   const { data, isLoading, error } = useInvoices({ page: 1, limit: 100 });
+  const patientsQuery = usePatients({ limit: 100 });
+  const companiesQuery = useCompanies();
+  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
+  const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
 
   const allInvoices = data?.data ?? [];
 
   // Filter by tab type
-  const tabInvoices = activeTab === 'corporate'
-    ? allInvoices.filter((inv: Invoice) => inv.type === 'company')
-    : allInvoices.filter((inv: Invoice) => inv.type !== 'company');
+  const tabInvoices = allInvoices.filter((invoice: Invoice) => invoice.type === (activeTab === 'corporate' ? 'Corporate' : 'Outpatient'));
+  const statusInvoices = statusTab === 'all' ? tabInvoices : tabInvoices.filter((invoice) => invoice.status === statusTab);
 
   // Apply search
   const filtered = search
-    ? tabInvoices.filter((inv: Invoice) => {
+    ? statusInvoices.filter((inv: Invoice) => {
         if (activeTab === 'corporate') {
-          const companyName = inv.company_id ? COMPANIES[inv.company_id as string] ?? '' : '';
+          const companyName = inv.company_id ? companyNames.get(inv.company_id) ?? '' : '';
           return (
             companyName.toLowerCase().includes(search.toLowerCase()) ||
-            inv.invoice_number.toLowerCase().includes(search.toLowerCase())
+            (inv.invoice_number ?? '').toLowerCase().includes(search.toLowerCase())
           );
         } else {
-          const name = getPatientName(inv.patient_id).toLowerCase();
+          const name = getPatientName(inv.patient_id, patientNames, patientsQuery.isLoading).toLowerCase();
           return (
             name.includes(search.toLowerCase()) ||
-            inv.invoice_number.toLowerCase().includes(search.toLowerCase())
+            (inv.invoice_number ?? '').toLowerCase().includes(search.toLowerCase())
           );
         }
       })
-    : tabInvoices;
+    : statusInvoices;
 
   // Pagination
   const total = filtered.length;
@@ -119,11 +109,15 @@ export default function InvoicesPage() {
           </nav>
         </div>
 
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3">
+          {(['all', 'draft', 'issued', 'unpaid', 'paid'] as const).map((status) => <button key={status} type="button" onClick={() => { setStatusTab(status); setPage(1); }} className={`h-8 rounded-lg px-3 text-xs font-medium capitalize transition-colors ${statusTab === status ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>{status === 'all' ? 'All Statuses' : status}</button>)}
+        </div>
+
         {/* Search bar */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
           <SearchInput
             value={search}
-            onChange={setSearch}
+            onChange={(value) => { setSearch(value); setPage(1); }}
             placeholder={
               activeTab === 'corporate'
                 ? 'Search by company or invoice #...'
@@ -163,9 +157,7 @@ export default function InvoicesPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                         Invoice Number
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
-                        Type
-                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total Amount</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                         Status
                       </th>
@@ -173,10 +165,7 @@ export default function InvoicesPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {paged.map((inv: Invoice) => {
-                      const companyName =
-                        inv.company_id
-                          ? COMPANIES[inv.company_id as string] ?? inv.company_id
-                          : '—';
+                      const companyName = inv.company_id ? companyNames.get(inv.company_id) ?? 'Unknown company' : '—';
                       return (
                         <tr
                           key={inv.id}
@@ -190,13 +179,13 @@ export default function InvoicesPage() {
                             {companyName}
                           </td>
                           <td className="px-4 py-3.5 text-xs font-mono text-slate-700">
-                            {inv.invoice_number}
+                            {inv.invoice_number ?? '—'}
                           </td>
-                          <td className="px-4 py-3.5 text-xs text-slate-600 capitalize">
-                            Corporate
+                          <td className="px-4 py-3.5 text-xs text-slate-500">
+                            {formatCurrency(inv.total_amount)}
                           </td>
                           <td className="px-4 py-3.5">
-                            <StatusBadge status={inv.status} />
+                            <StatusBadge status={inv.status ?? 'unknown'} />
                           </td>
                         </tr>
                       );
@@ -211,18 +200,11 @@ export default function InvoicesPage() {
                 >
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/50">
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">
-                        First Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
-                        Last Name
-                      </th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Patient</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                         Invoice Number
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
-                        Type
-                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total Amount</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                         Status
                       </th>
@@ -239,19 +221,14 @@ export default function InvoicesPage() {
                         onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/billing/invoices/${inv.id}`); }}
                       >
                         <td className="px-5 py-3.5 text-xs font-medium text-slate-900">
-                          {getPatientFirstName(inv.patient_id)}
-                        </td>
-                        <td className="px-4 py-3.5 text-xs font-medium text-blue-600">
-                          {getPatientLastName(inv.patient_id)}
+                          {getPatientName(inv.patient_id, patientNames, patientsQuery.isLoading)}
                         </td>
                         <td className="px-4 py-3.5 text-xs font-mono text-slate-700">
-                          {inv.invoice_number}
+                          {inv.invoice_number ?? '—'}
                         </td>
-                        <td className="px-4 py-3.5 text-xs text-slate-600 capitalize">
-                          Outpatient
-                        </td>
+                        <td className="px-4 py-3.5 text-right text-xs font-medium text-slate-800">{formatCurrency(inv.total_amount)}</td>
                         <td className="px-4 py-3.5">
-                          <StatusBadge status={inv.status} />
+                          <StatusBadge status={inv.status ?? 'unknown'} />
                         </td>
                       </tr>
                     ))}

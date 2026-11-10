@@ -8,33 +8,39 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Avatar } from '@/components/ui/Avatar';
 import {
   useDashboardMetrics,
-  useTodayAppointments,
+  useTodayEncounters,
   usePatientQueue,
   useRecentLabResults,
 } from '@/lib/queries/useDashboard';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { formatDate, formatWaitingTime, formatCurrency, getPatientFullName } from '@/lib/utils';
+import { usePatients } from '@/lib/queries/usePatients';
+import { formatDate } from '@/lib/utils';
 import { Encounter, LabResult } from '@/types';
 
-function getPatientName(patientId: string | object): string {
+function getPatientName(patientId: string | object, patientNames: Map<string, string>, patientsLoading: boolean): string {
   if (typeof patientId === 'object' && patientId !== null) {
     const p = patientId as { first_name: string; last_name: string };
-    return `${p.first_name} ${p.last_name}`;
+    const name = `${p.first_name} ${p.last_name}`.trim();
+    if (name) return name;
   }
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p ? getPatientFullName(p) : String(patientId);
+  const id = typeof patientId === 'string' ? patientId : (patientId as { id?: string }).id ?? '';
+  return patientNames.get(id) ?? (patientsLoading ? 'Loading patient...' : 'Unknown patient');
 }
 
 export default function DashboardPage() {
   const metricsQuery = useDashboardMetrics();
-  const appointmentsQuery = useTodayAppointments();
+  const todayEncountersQuery = useTodayEncounters();
   const queueQuery = usePatientQueue();
   const labsQuery = useRecentLabResults();
+  const patientsQuery = usePatients({ limit: 100 });
 
   const metrics = metricsQuery.data;
-  const appointments = appointmentsQuery.data ?? [];
+  const todayEncounters = todayEncountersQuery.data ?? [];
   const queue = queueQuery.data ?? [];
   const labs = labsQuery.data ?? [];
+  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [
+    patient.id,
+    `${patient.first_name} ${patient.last_name}`.trim(),
+  ]));
 
   return (
     <div className="space-y-6">
@@ -77,25 +83,25 @@ export default function DashboardPage() {
               subtitle="All registered"
             />
             <StatCard
-              title="Today's Appointments"
-              value={metrics.todayAppointments}
+              title="Today's Encounters"
+              value={metrics.todayEncounters}
               icon={CalendarDays}
               iconColor="text-violet-600"
-              subtitle="Scheduled today"
+              subtitle="Recorded today"
             />
             <StatCard
-              title="Patients Waiting"
-              value={metrics.patientsWaiting}
+              title="In-Progress Encounters"
+              value={metrics.inProgressEncounters}
               icon={Clock}
               iconColor="text-amber-600"
-              subtitle="In queue now"
+              subtitle="Marked not completed"
             />
             <StatCard
               title="Completed Encounters"
               value={metrics.completedEncounters}
               icon={ClipboardCheck}
               iconColor="text-emerald-600"
-              subtitle="This month"
+              subtitle="EHR encounter status"
             />
             <StatCard
               title="Pending Lab Results"
@@ -105,12 +111,12 @@ export default function DashboardPage() {
               subtitle="Awaiting processing"
             />
             <StatCard
-              title="Today's Revenue"
-              value={metrics.todayRevenue}
+              title="Paid Invoice Value"
+              value={metrics.paidInvoiceValue}
               icon={DollarSign}
               iconColor="text-teal-600"
               isCurrency
-              subtitle="Invoices collected"
+              subtitle="Invoices marked paid"
             />
           </>
         ) : null}
@@ -122,17 +128,17 @@ export default function DashboardPage() {
         <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Today's Appointments</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{appointments.length} appointments scheduled</p>
+              <h2 className="text-sm font-semibold text-slate-900">Today's Encounters</h2>
+              <p className="text-xs text-slate-400 mt-0.5">{todayEncounters.length} encounters recorded today</p>
             </div>
             <a href="/appointments" className="text-xs text-blue-600 hover:underline font-medium">
               View all
             </a>
           </div>
 
-          {appointmentsQuery.isLoading ? (
+          {todayEncountersQuery.isLoading ? (
             <TableSkeleton rows={4} cols={5} />
-          ) : appointments.length === 0 ? (
+          ) : todayEncounters.length === 0 ? (
             <EmptyState
               title="No appointments today"
               description="Appointments will appear here as they are scheduled."
@@ -144,27 +150,23 @@ export default function DashboardPage() {
                   <tr className="border-b border-slate-100">
                     <th className="px-5 py-2.5 text-left text-xs font-medium text-slate-400">Patient</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Time</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Provider</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Service</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {appointments.map((enc: Encounter) => (
+              {todayEncounters.map((enc: Encounter) => (
                     <tr key={enc.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
-                          <Avatar name={getPatientName(enc.patient_id)} size="sm" />
+                           <Avatar name={getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading)} size="sm" />
                           <span className="text-xs font-medium text-slate-900">
-                            {getPatientName(enc.patient_id)}
+                             {getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading)}
                           </span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600 tabular-nums">
                         {formatDate(enc.encounter_date, 'h:mm a')}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        {enc.provider_name ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
                         {enc.service ?? '—'}
@@ -185,7 +187,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Patient Queue</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{queue.length} in queue</p>
+              <p className="text-xs text-slate-400 mt-0.5">{queue.length} marked not completed</p>
             </div>
             <a href="/queue" className="text-xs text-blue-600 hover:underline font-medium">
               Manage
@@ -199,25 +201,23 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : queue.length === 0 ? (
-            <EmptyState title="Queue is empty" description="No patients currently waiting." />
+            <EmptyState title="No in-progress encounters" description="The EHR has no encounters marked not completed." />
           ) : (
             <ul className="divide-y divide-slate-50 px-4 py-2">
               {queue.map((enc: Encounter) => (
                 <li key={enc.id} className="py-3 flex items-center gap-3">
                   <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 text-xs font-bold">
-                    {enc.queue_number ?? '—'}
+                    <CalendarDays className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-slate-900 truncate">
-                      {getPatientName(enc.patient_id)}
+                      {getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading)}
                     </p>
                     <p className="text-[10px] text-slate-400 truncate">{enc.service ?? 'General'}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <StatusBadge status={enc.status} />
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      {formatWaitingTime(enc.waiting_since)}
-                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(enc.encounter_date, 'h:mm a')}</p>
                   </div>
                 </li>
               ))}
@@ -253,7 +253,6 @@ export default function DashboardPage() {
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Test</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Date</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Status</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">AI Interpretation</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -261,27 +260,18 @@ export default function DashboardPage() {
                   <tr key={lab.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={getPatientName(lab.patient_id)} size="sm" />
+                         <Avatar name={getPatientName(lab.patient_id, patientNames, patientsQuery.isLoading)} size="sm" />
                         <span className="text-xs font-medium text-slate-900">
-                          {getPatientName(lab.patient_id)}
+                           {getPatientName(lab.patient_id, patientNames, patientsQuery.isLoading)}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-700">{lab.test_name}</td>
                     <td className="px-4 py-3 text-xs text-slate-500 tabular-nums">
-                      {formatDate(lab.requested_date)}
+                      {formatDate(lab.collected_date ?? lab.released_date)}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={lab.status} />
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      {lab.ai_interpretation ? (
-                        <p className="text-xs text-slate-600 truncate" title={lab.ai_interpretation}>
-                          {lab.ai_interpretation}
-                        </p>
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
+                      <StatusBadge status={lab.status ?? 'unknown'} />
                     </td>
                   </tr>
                 ))}

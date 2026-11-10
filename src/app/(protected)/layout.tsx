@@ -5,20 +5,15 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { cn } from '@/lib/utils';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { isLoading, isAuthenticated } = useRequireAuth();
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-blue-600 animate-pulse" />
-          <p className="text-sm text-slate-500">Loading Toplab EHR...</p>
-        </div>
-      </div>
-    );
+    return <BrandLoader label="Opening your workspace" detail="Verifying your secure EHR session" />;
   }
 
   if (!isAuthenticated) {
@@ -30,15 +25,17 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       <AppSidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
-      <Topbar sidebarCollapsed={sidebarCollapsed} />
+      <Topbar sidebarCollapsed={sidebarCollapsed} onMenuClick={() => setMobileSidebarOpen(true)} />
       <main
         className={cn(
-          'pt-14 min-h-screen transition-all duration-300',
-          sidebarCollapsed ? 'pl-[60px]' : 'pl-[228px]',
+          'min-h-screen min-w-0 pt-14 transition-all duration-300',
+          sidebarCollapsed ? 'md:pl-[60px]' : 'md:pl-[228px]',
         )}
       >
-        <div className="p-6">{children}</div>
+        <div className="min-w-0 p-3 sm:p-4 lg:p-6">{children}</div>
       </main>
     </div>
   );

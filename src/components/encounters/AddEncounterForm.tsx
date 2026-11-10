@@ -4,8 +4,11 @@ import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Search, ChevronLeft, ChevronRight, ChevronsUpDown, Check } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { usePatients } from '@/lib/queries/usePatients';
 import { useCreateEncounter } from '@/lib/queries/useEncounters';
+import { useCompanies } from '@/lib/queries/useCompanies';
+import { api } from '@/lib/api';
 import { EncounterStatus } from '@/types';
 
 interface AddEncounterFormProps {
@@ -13,61 +16,18 @@ interface AddEncounterFormProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const AVAILABLE_SERVICES = [
-  { id: 's1', name: 'Anti-HBs', price: 788.00 },
-  { id: 's2', name: 'Anti-HCV', price: 699.00 },
-  { id: 's3', name: 'Basic Five', price: 10000.00 },
-  { id: 's4', name: 'Blood Typing', price: 599.00 },
-  { id: 's5', name: 'Blood Uric Acid', price: 1299.00 },
-  { id: 's6', name: 'Breast Ultrasound', price: 499.00 },
-  { id: 's7', name: 'CBC with Platelet Count', price: 799.00 },
-  { id: 's8', name: 'Cervical Cytology', price: 2333.00 },
-  { id: 's9', name: 'Chest X-Ray', price: 200.00 },
-  { id: 's10', name: 'Complete Blood Count (CBC)', price: 1700.00 },
-  { id: 's11', name: 'Complete Urinalysis', price: 477.00 },
-  { id: 's12', name: 'Complete Urinalysis (Alt)', price: 799.00 },
-  { id: 's13', name: 'Conventional Pap Smear', price: 599.00 },
-  { id: 's14', name: 'COVID-19 Antigen Test', price: 2000.00 },
-  { id: 's15', name: 'COVID-19 Saliva Antigen Test', price: 1499.00 },
-  { id: 's16', name: 'Dengue NS1', price: 2331.00 },
-  { id: 's17', name: 'Drug Test', price: 1000.00 },
-  { id: 's18', name: 'Fasting Blood Sugar (FBS)', price: 1299.00 },
-  { id: 's19', name: 'Fecal Occult Blood Test', price: 599.00 },
-  { id: 's20', name: 'Fecalysis', price: 500.00 },
-  { id: 's21', name: 'Fertility Semen Analysis', price: 5888.00 },
-  { id: 's22', name: 'FT3', price: 899.00 },
-  { id: 's23', name: 'FT4', price: 1466.00 },
-  { id: 's24', name: 'HBsAg', price: 1233.00 },
-  { id: 's25', name: 'Hematocrit', price: 1212.00 },
-  { id: 's26', name: 'Hemoglobin', price: 1212.00 },
-  { id: 's27', name: 'HIV Screening', price: 699.00 },
-  { id: 's28', name: 'KOH Fungal Examination', price: 599.00 },
-  { id: 's29', name: 'Lumbosacral X-Ray', price: 599.00 },
-  { id: 's30', name: 'Manual Differential Count', price: 788.00 },
-  { id: 's31', name: 'Pelvic Ultrasound', price: 688.00 },
-  { id: 's32', name: 'Peripheral Blood Smear (PBS)', price: 566.00 },
-  { id: 's33', name: 'Platelet Count', price: 1599.00 },
-  { id: 's34', name: 'Pre-Employment Chest X-Ray', price: 1000.00 },
-  { id: 's35', name: 'Pre-Employment ECG', price: 1299.00 },
-  { id: 's36', name: 'Pregnancy Test', price: 599.00 },
-  { id: 's37', name: 'Random Blood Sugar (RBS)', price: 1299.00 },
-  { id: 's38', name: 'Resting ECG', price: 1111.00 },
-  { id: 's39', name: 'Semen Analysis', price: 699.00 },
-  { id: 's40', name: 'Skull X-Ray', price: 450.00 },
-  { id: 's41', name: 'Stool Ova & Parasite Exam', price: 899.00 },
-  { id: 's42', name: 'test 3', price: 400.00 },
-  { id: 's43', name: 'test price', price: 200.00 },
-  { id: 's44', name: 'test price 2', price: 200.00 },
-  { id: 's45', name: 'TSH', price: 699.00 },
-  { id: 's46', name: 'VDRL/RPR', price: 2333.00 },
-  { id: 's47', name: 'Whole Abdomen Ultrasound', price: 499.00 }
-];
-
 const ITEMS_PER_PAGE = 8;
 
 export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) {
   const { data: patientsData } = usePatients({ limit: 1000 });
   const patients = patientsData?.data ?? [];
+  const { data: companiesData } = useCompanies();
+  const companies = companiesData?.data ?? [];
+  const { data: serviceCatalog = [] } = useQuery({
+    queryKey: ['catalog-services'], queryFn: () => api.services.getAll(),
+  });
+  const availableServices = serviceCatalog.filter((service) => service.is_active)
+    .map((service) => ({ id: service.id, name: service.name, price: service.price, department: service.department }));
   const { mutateAsync: createEncounter, isPending } = useCreateEncounter();
 
   const [encounterType, setEncounterType] = useState<'OPD' | 'PEME' | 'APE'>('OPD');
@@ -75,6 +35,13 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
   const [company, setCompany] = useState('');
   const [corporateRequest, setCorporateRequest] = useState('');
   const [status, setStatus] = useState<EncounterStatus>('in_progress');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { data: corporateRequestsData } = useQuery({
+    queryKey: ['corporate-requests', company],
+    queryFn: () => api.corporateRequests.getAll({ companyId: company, limit: 100 }),
+    enabled: encounterType !== 'OPD' && !!company,
+  });
+  const corporateRequests = corporateRequestsData?.data ?? [];
   
   // Custom searchable patient dropdown state
   const [isPatientDropdownOpen, setIsPatientDropdownOpen] = useState(false);
@@ -110,7 +77,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
 
   // Services selection
   const [serviceSearch, setServiceSearch] = useState('');
-  const [selectedServices, setSelectedServices] = useState<{id: string; name: string; price: number}[]>([]);
+  const [selectedServices, setSelectedServices] = useState<{id: string; name: string; price: number; department: string | null}[]>([]);
   const [servicePage, setServicePage] = useState(1);
 
   // Reset pagination when search changes
@@ -122,6 +89,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
   useEffect(() => {
     if (open) {
       setEncounterType('OPD');
+      setSubmitError(null);
       setPatientId('');
       setCompany('');
       setCorporateRequest('');
@@ -134,8 +102,8 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
   }, [open]);
 
   const filteredServices = useMemo(() => {
-    return AVAILABLE_SERVICES.filter(s => s.name.toLowerCase().includes(serviceSearch.toLowerCase()));
-  }, [serviceSearch]);
+    return availableServices.filter(s => s.name.toLowerCase().includes(serviceSearch.toLowerCase()));
+  }, [availableServices, serviceSearch]);
 
   const totalPages = Math.ceil(filteredServices.length / ITEMS_PER_PAGE);
   
@@ -144,7 +112,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
     return filteredServices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredServices, servicePage]);
 
-  const toggleService = (service: {id: string; name: string; price: number}) => {
+  const toggleService = (service: {id: string; name: string; price: number; department: string | null}) => {
     setSelectedServices(prev => {
       if (prev.find(s => s.id === service.id)) {
         return prev.filter(s => s.id !== service.id);
@@ -157,6 +125,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!patientId) {
       alert('Please select a patient.');
       return;
@@ -172,14 +141,13 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
         status,
         services_selected: selectedServices,
         encounter_date: new Date().toISOString(),
-        provider_name: 'Dr. Auto Assigned',
-        service: selectedServices.map(s => s.name).join(', ') || 'General Consultation',
       };
       
       await createEncounter(payload);
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to create encounter', error);
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save encounter to the EHR.');
     }
   };
 
@@ -210,6 +178,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
 
           <div className="flex-1 overflow-y-auto px-6 py-6 bg-slate-50/30">
             <form id="add-encounter-form" onSubmit={handleSubmit} className="space-y-8">
+              {submitError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{submitError}</p>}
               
               {/* Encounter Type */}
               <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -300,12 +269,8 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
                       onChange={(e) => setStatus(e.target.value as EncounterStatus)}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     >
-                      <option value="scheduled">Scheduled</option>
-                      <option value="waiting">Waiting</option>
                       <option value="in_progress">In Progress</option>
                       <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="no_show">No Show</option>
                     </select>
                   </div>
                   
@@ -326,14 +291,11 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
                           id="company"
                           required={true}
                           value={company}
-                          onChange={(e) => setCompany(e.target.value)}
+                          onChange={(e) => { setCompany(e.target.value); setCorporateRequest(''); }}
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                         >
                           <option value="" disabled>Select an item...</option>
-                          <option value="Company A">Company A</option>
-                          <option value="Company B">Company B</option>
-                          <option value="Company C">Company C</option>
-                          <option value="Zyberlab IT Solutions">Zyberlab IT Solutions</option>
+                          {companies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                         </select>
                       </div>
 
@@ -347,9 +309,9 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                         >
                           <option value="" disabled>Select an item...</option>
-                          <option value="PEME (Newly Hired)">PEME (Newly Hired)</option>
-                          <option value="APE Package">APE Package</option>
-                          <option value="Executive Checkup">Executive Checkup</option>
+                          {corporateRequests.map((item) => (
+                            <option key={item.id} value={item.id}>{item.company_code ?? item.request_type} ({item.status})</option>
+                          ))}
                         </select>
                       </div>
                     </>

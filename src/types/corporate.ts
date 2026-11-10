@@ -24,3 +24,18 @@ export interface CorporateRequest {
   notes: string | null;
   patients?: Patient[];
 }
+
+export interface Employee {
+  id: string;
+  corporate_request_id: string;
+  patient_id: string | null;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  sex: string | null;
+  civil_status: string | null;
+  mobile_number: string | null;
+  email: string | null;
+  address: string | null;
+  date_of_birth: string | null;
+}

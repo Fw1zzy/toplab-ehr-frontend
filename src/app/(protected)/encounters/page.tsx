@@ -9,20 +9,26 @@ import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
 import { useEncounters } from '@/lib/queries/useEncounters';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { formatDateTime, getPatientFullName } from '@/lib/utils';
+import { usePatients } from '@/lib/queries/usePatients';
+import { useCompanies } from '@/lib/queries/useCompanies';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 import { Encounter } from '@/types';
 import { ClipboardList, Plus, Building2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddEncounterForm } from '@/components/encounters/AddEncounterForm';
+import { usePreferences } from '@/lib/auth/PreferencesProvider';
 
-function getPatientName(patientId: string | object): string {
-  if (typeof patientId === 'object') return '';
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p ? getPatientFullName(p) : patientId as string;
+function getPatientName(patientId: string | object, patientNames: Map<string, string>, isLoading: boolean): string {
+  if (typeof patientId === 'object' && patientId) {
+    const patient = patientId as { first_name?: string; last_name?: string };
+    const name = [patient.first_name, patient.last_name].filter(Boolean).join(' ');
+    if (name) return name;
+    return patientNames.get((patientId as { id?: string }).id ?? '') ?? (isLoading ? 'Loading patient...' : 'Unknown patient');
+  }
+  return patientNames.get(patientId) ?? (isLoading ? 'Loading patient...' : 'Unknown patient');
 }
-
-const PAGE_SIZE = 10;
 
 const TABS = [
   { id: 'all', label: 'All Encounters', icon: ClipboardList },
@@ -31,6 +37,8 @@ const TABS = [
 ];
 
 export default function EncountersPage() {
+  const { preferences } = usePreferences();
+  const PAGE_SIZE = preferences.rowsPerPage;
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -38,31 +46,48 @@ export default function EncountersPage() {
   const [page, setPage] = useState(1);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 
-  const { data, isLoading, error } = useEncounters({ status: status || undefined, page, limit: PAGE_SIZE });
+  const { data, isLoading, error } = useEncounters({ page: 1, limit: 100 });
+  const patientsQuery = usePatients({ limit: 100 });
+  const companiesQuery = useCompanies();
+  const requestsQuery = useQuery({
+    queryKey: ['corporate-requests', 'encounter-labels'],
+    queryFn: () => api.corporateRequests.getAll({ page: 1, limit: 100 }),
+  });
   const encounters = data?.data ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
+  const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
+  const requestNames = new Map((requestsQuery.data?.data ?? []).map((request) => [request.id, request.company_code || request.request_type]));
 
   // Tab Filtering
   const typeFiltered = activeTab === 'all' 
     ? encounters 
     : activeTab === 'outpatient' 
-      ? encounters.filter((e: Encounter) => !e.encounter_type || e.encounter_type === 'OPD')
-      : encounters.filter((e: Encounter) => e.encounter_type === 'PEME' || e.encounter_type === 'APE');
+      ? encounters.filter((e: Encounter) => !e.encounter_type || e.encounter_type.startsWith('OPD'))
+      : encounters.filter((e: Encounter) => e.encounter_type?.startsWith('PEME') || e.encounter_type?.startsWith('APE'));
 
-  // Search Filtering
-  const filtered = search
-    ? typeFiltered.filter((e: Encounter) => {
-        const name = getPatientName(e.patient_id).toLowerCase();
-        return name.includes(search.toLowerCase()) || e.provider_name?.toLowerCase().includes(search.toLowerCase());
+  const statusFiltered = status ? typeFiltered.filter((encounter: Encounter) => encounter.status === status) : typeFiltered;
+  const filtered = search.trim()
+    ? statusFiltered.filter((e: Encounter) => {
+        const name = getPatientName(e.patient_id, patientNames, patientsQuery.isLoading).toLowerCase();
+        return name.includes(search.toLowerCase())
+          || (e.service ?? '').toLowerCase().includes(search.toLowerCase())
+          || (e.encounter_type ?? '').toLowerCase().includes(search.toLowerCase());
       })
-    : typeFiltered;
+    : statusFiltered;
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const pagedEncounters = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  function updateSearch(value: string) {
+    setSearch(value);
+    setPage(1);
+  }
 
   return (
     <div className="space-y-5">
       <PageHeader 
         title="Encounters" 
-        description={`${total.toLocaleString()} total encounters`} 
+        description={`${data?.total ?? encounters.length} total encounters`}
         actions={
           <button
             type="button"
@@ -76,13 +101,13 @@ export default function EncountersPage() {
       />
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 p-1.5 inline-flex shadow-sm">
+      <div className="max-w-full overflow-x-auto bg-white rounded-xl border border-slate-200 p-1.5 inline-flex shadow-sm">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => { setActiveTab(tab.id); setPage(1); }}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+              'flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-colors',
               activeTab === tab.id 
                 ? 'bg-slate-100 text-slate-900 shadow-sm' 
                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -95,7 +120,7 @@ export default function EncountersPage() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by patient or provider..." className="w-72" id="encounter-search" />
+        <SearchInput value={search} onChange={updateSearch} placeholder="Search patient, type, or service..." className="w-72" id="encounter-search" />
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1); }}
@@ -103,12 +128,8 @@ export default function EncountersPage() {
           aria-label="Filter by status"
         >
           <option value="">All statuses</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="waiting">Waiting</option>
           <option value="in_progress">In Progress</option>
           <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="no_show">No Show</option>
         </select>
       </div>
 
@@ -134,14 +155,13 @@ export default function EncountersPage() {
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Corporate Request</th>
                       </>
                     )}
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Provider</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Service</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filtered.map((enc: Encounter) => {
-                    const name = getPatientName(enc.patient_id);
+                  {pagedEncounters.map((enc: Encounter) => {
+                    const name = getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading);
                     const type = enc.encounter_type || 'OPD';
                     
                     return (
@@ -174,12 +194,11 @@ export default function EncountersPage() {
                         
                         {activeTab === 'corporate' && (
                           <>
-                            <td className="px-4 py-3.5 text-xs text-slate-600">{enc.company ?? '—'}</td>
-                            <td className="px-4 py-3.5 text-xs text-slate-600">{enc.corporate_request ?? '—'}</td>
+                            <td className="px-4 py-3.5 text-xs text-slate-600">{enc.company ? companyNames.get(enc.company) ?? 'Unknown company' : '—'}</td>
+                            <td className="px-4 py-3.5 text-xs text-slate-600">{enc.corporate_request ? requestNames.get(enc.corporate_request) ?? 'Corporate request' : '—'}</td>
                           </>
                         )}
 
-                        <td className="px-4 py-3.5 text-xs text-slate-600">{enc.provider_name ?? '—'}</td>
                         <td className="px-4 py-3.5 text-xs text-slate-600 max-w-[200px] truncate" title={enc.service ?? ''}>{enc.service ?? '—'}</td>
                         <td className="px-4 py-3.5"><StatusBadge status={enc.status} /></td>
                       </tr>

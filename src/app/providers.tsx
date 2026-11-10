@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/lib/auth/AuthProvider';
+import { PreferencesProvider } from '@/lib/auth/PreferencesProvider';
 import { useState } from 'react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -22,18 +23,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {children}
-        <Toaster
-          position="top-right"
-          richColors
-          closeButton
-          toastOptions={{
-            duration: 4000,
-            classNames: {
-              toast: 'font-sans text-sm',
-            },
-          }}
-        />
+        <PreferencesProvider>
+          {children}
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            toastOptions={{
+              duration: 4000,
+              classNames: {
+                toast: 'font-sans text-sm',
+              },
+            }}
+          />
+        </PreferencesProvider>
 
       </AuthProvider>
     </QueryClientProvider>

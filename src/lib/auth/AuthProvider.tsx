@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { CurrentUser } from '@/types';
 import { api } from '@/lib/api';
 
@@ -9,13 +10,13 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  updateProfile: (profile: Pick<CurrentUser, 'first_name' | 'last_name'>) => Promise<void>;
   logout: () => Promise<void>;
   role: CurrentUser['roleName'] | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const SESSION_KEY = 'toplab_session';
 const AUTH_COOKIE = 'toplab_auth';
 
 /** Set a plain JS cookie so the proxy.ts edge function can gate protected routes */
@@ -27,70 +28,62 @@ function clearAuthCookie() {
   document.cookie = `${AUTH_COOKIE}=; path=/; max-age=0; SameSite=Strict`;
 }
 
-// ---------------------------------------------------------------------------
-// Dev bypass — set NEXT_PUBLIC_BYPASS_AUTH=true in .env to skip login
-// ---------------------------------------------------------------------------
-const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
-
-const MOCK_USER: CurrentUser = {
-  id: 'bypass-user',
-  first_name: 'Dev',
-  last_name: 'User',
-  email: 'dev@toplab.local',
-  avatar: null,
-  role: 'administrator',
-  roleName: 'administrator',
-  status: 'active',
-  last_access: null,
-  last_page: null,
-  permissions: [],
-};
+function hasAuthCookie() {
+  return document.cookie.split(';').some((cookie) => cookie.trim() === `${AUTH_COOKIE}=1`);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(BYPASS_AUTH ? MOCK_USER : null);
-  const [isLoading, setIsLoading] = useState(!BYPASS_AUTH);
+  const pathname = usePathname();
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const profileRequest = useRef(0);
 
   useEffect(() => {
-    // When auth bypass is active, immediately set the cookie so the proxy
-    // middleware also allows through, then mark loading as done.
-    if (BYPASS_AUTH) {
-      setAuthCookie();
+    if (pathname === '/login' || api.auth.hasAccessToken() || !hasAuthCookie()) {
       setIsLoading(false);
       return;
     }
 
-    // Rehydrate from sessionStorage on mount (client only)
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as CurrentUser;
-        setUser(parsed);
-        // Re-assert the cookie so the proxy keeps allowing access
+    let active = true;
+    api.auth.refreshSession().then((currentUser) => {
+      if (!active) return;
+      if (currentUser) {
+        setUser(currentUser as CurrentUser);
         setAuthCookie();
-      }
-    } catch {
-      // ignore parse errors — treat as unauthenticated
-    } finally {
-      setIsLoading(false);
+      } else clearAuthCookie();
+    }).finally(() => {
+      if (active) setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [pathname]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const result = await api.auth.login(email, password);
+      setUser(result.user as CurrentUser);
+      setAuthCookie();
+      const requestId = ++profileRequest.current;
+      void api.auth.getCurrentUser().then((profile) => {
+        if (profile && profileRequest.current === requestId) setUser(profile);
+      });
+    } catch (error) {
+      setUser(null);
+      clearAuthCookie();
+      throw error;
     }
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await api.auth.login(email, password);
-    const currentUser = result.user as CurrentUser;
-    setUser(currentUser);
-    // Persist user object in sessionStorage (cleared on tab close)
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
-    // Set the cookie BEFORE router.replace so the proxy sees it immediately
-    setAuthCookie();
+  const updateProfile = useCallback(async (profile: Pick<CurrentUser, 'first_name' | 'last_name'>) => {
+    const updatedUser = await api.auth.updateProfile(profile);
+    setUser(updatedUser);
   }, []);
 
   const logout = useCallback(async () => {
+    profileRequest.current += 1;
     try {
       await api.auth.logout();
     } finally {
       setUser(null);
-      sessionStorage.removeItem(SESSION_KEY);
       clearAuthCookie();
     }
   }, []);
@@ -102,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        updateProfile,
         logout,
         role: user?.roleName ?? null,
       }}

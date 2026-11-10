@@ -9,11 +9,12 @@ import { Company } from '@/types/corporate';
 interface AddCompanyFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddCompany: (company: Omit<Company, 'id'>) => void;
+  onAddCompany: (company: Omit<Company, 'id'>) => Promise<void>;
   company?: Company;
 }
 
 export function AddCompanyForm({ open, onOpenChange, onAddCompany, company }: AddCompanyFormProps) {
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     contract_status: 'Active' as 'Active' | 'Inactive',
@@ -43,10 +44,15 @@ export function AddCompanyForm({ open, onOpenChange, onAddCompany, company }: Ad
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onAddCompany(formData);
-    onOpenChange(false);
+    setSubmitError(null);
+    try {
+      await onAddCompany(formData);
+      onOpenChange(false);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save company to the EHR.');
+    }
   };
 
   return (
@@ -127,6 +133,7 @@ export function AddCompanyForm({ open, onOpenChange, onAddCompany, company }: Ad
           </div>
 
           <div className="border-t border-slate-100 p-6 bg-slate-50/50 flex items-center justify-end gap-3">
+            {submitError && <p role="alert" className="mr-auto text-xs text-red-600">{submitError}</p>}
             <Dialog.Close asChild>
               <button
                 type="button"

@@ -2,39 +2,16 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Building2, MapPin, ClipboardList, Info } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { cn } from '@/lib/utils';
-import { Company, CorporateRequest } from '@/types/corporate';
+import { cn, formatDate } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: Info },
   { id: 'corporate-requests', label: 'Corporate Requests', icon: ClipboardList },
-];
-
-const MOCK_COMPANY: Company = {
-  id: 'e7b1c34a-9d22-48f5-b96c-123456789abc',
-  name: 'TechFlow Solutions',
-  contract_status: 'Active',
-  billing_address: '123 Innovation Drive, Tech Park, Cityville',
-};
-
-const MOCK_REQUESTS: CorporateRequest[] = [
-  {
-    id: 'req-1',
-    company_code: 'TECH-001',
-    company: 'TechFlow Solutions',
-    request_type: 'PEME (Newly Hired)',
-    status: 'approved',
-    schedule_start_date_: '2026-10-10',
-    schedule_end_date: '2026-10-15',
-    quoted_price: 25000,
-    corporate_request_date_submitted: '2026-10-01',
-    is_invoiced: false,
-    finalize_request: true,
-    notes: 'Urgent processing required.'
-  },
 ];
 
 export default function CompanyDetailPage() {
@@ -42,7 +19,14 @@ export default function CompanyDetailPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
 
-  const company = MOCK_COMPANY;
+  const { data: company, isLoading } = useQuery({
+    queryKey: ['companies', id], queryFn: () => api.companies.getOne(id), enabled: !!id,
+  });
+  const { data: requests = [] } = useQuery({
+    queryKey: ['corporate-requests', id], queryFn: () => api.corporateRequests.getByCompany(id), enabled: !!id,
+  });
+
+  if (isLoading) return <p className="p-8 text-center text-sm text-slate-500">Loading company...</p>;
 
   if (!company) {
     return (
@@ -74,12 +58,6 @@ export default function CompanyDetailPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Companies
         </button>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-        >
-          Edit Company
-        </button>
       </div>
 
       {/* Company Header */}
@@ -92,9 +70,8 @@ export default function CompanyDetailPage() {
             <div className="flex flex-wrap items-start gap-3">
               <div>
                 <h1 className="text-xl font-bold text-slate-900">{company.name}</h1>
-                <p className="text-sm text-slate-500 mt-0.5 font-mono">{id}</p>
               </div>
-              <StatusBadge status={company.contract_status} className="mt-1" />
+              <StatusBadge status={company.contract_status.toLowerCase()} className="mt-1" />
             </div>
             <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
               {company.billing_address && (
@@ -149,7 +126,7 @@ export default function CompanyDetailPage() {
                   </div>
                   <div>
                     <p className="text-slate-400">Contract Status</p>
-                    <p className="font-medium text-slate-700 mt-0.5 capitalize">{company.contract_status}</p>
+                    <p className="font-medium text-slate-700 mt-0.5">{company.contract_status}</p>
                   </div>
                 </div>
               </div>
@@ -158,7 +135,7 @@ export default function CompanyDetailPage() {
 
           {/* Corporate Requests Tab */}
           {activeTab === 'corporate-requests' && (
-            MOCK_REQUESTS.length === 0 ? (
+            requests.length === 0 ? (
               <EmptyState icon={ClipboardList} title="No requests" description="No corporate requests found for this company." />
             ) : (
               <div className="overflow-x-auto">
@@ -172,16 +149,16 @@ export default function CompanyDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {MOCK_REQUESTS.map((req) => (
+                    {requests.map((req) => (
                       <tr 
                         key={req.id} 
                         className="hover:bg-slate-50/60 cursor-pointer transition-colors"
                         onClick={() => router.push(`/corporate-requests/${req.id}`)}
                       >
-                        <td className="py-3 px-1 text-xs font-mono text-slate-700">{req.company_code}</td>
+                        <td className="py-3 px-1 text-xs font-mono text-slate-700">{req.company_code ?? '—'}</td>
                         <td className="py-3 px-3 text-xs text-slate-600">{req.request_type}</td>
-                        <td className="py-3 px-3 text-xs text-slate-600 tabular-nums">{req.corporate_request_date_submitted}</td>
-                        <td className="py-3 px-3"><StatusBadge status={req.status} /></td>
+                        <td className="py-3 px-3 text-xs text-slate-600 tabular-nums">{req.corporate_request_date_submitted ? formatDate(req.corporate_request_date_submitted) : '—'}</td>
+                        <td className="py-3 px-3"><StatusBadge status={req.status.toLowerCase()} /></td>
                       </tr>
                     ))}
                   </tbody>

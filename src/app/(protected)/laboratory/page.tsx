@@ -1,180 +1,130 @@
 'use client';
 
-import { useState } from 'react';
-import { FlaskConical } from 'lucide-react';
-import { PageHeader } from '@/components/ui/PageHeader';
-import { SearchInput } from '@/components/ui/SearchInput';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-import { Avatar } from '@/components/ui/Avatar';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Activity, CheckCircle2, FlaskConical, Search } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatCard } from '@/components/ui/StatCard';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useLabResults } from '@/lib/queries/useLabResults';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { formatDate, getPatientFullName } from '@/lib/utils';
-import { cn } from '@/lib/utils';
+import { usePatients } from '@/lib/queries/usePatients';
 import { LabResult } from '@/types';
+import { formatDate } from '@/lib/utils';
 
-function getPatientName(patientId: string | object): string {
-  if (typeof patientId === 'object') return '';
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p ? getPatientFullName(p) : String(patientId);
+interface ResultGroup {
+  collection: string;
+  label: string;
 }
 
-const STATUS_TABS = ['all', 'pending', 'processing', 'completed', 'released'];
-const CATEGORY_TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'hematology', label: 'Hematology' },
-  { id: 'clinical_chemistry', label: 'Chemistry' },
-  { id: 'urinalysis', label: 'Urinalysis' },
-  { id: 'serology', label: 'Serology' },
-  { id: 'microbiology', label: 'Microbiology' },
-  { id: 'imaging', label: 'Imaging' },
-  { id: 'other', label: 'Other' },
-];
-
-const PAGE_SIZE = 10;
+function progressText(status: string | null) {
+  if (!status) return 'Not Set';
+  if (status === 'with_results' || status === 'completed' || status === 'released') return 'With Results';
+  if (status === 'for_encoding' || status === 'processing' || status === 'pending') return 'In Progress';
+  return status ? status.replace(/_/g, ' ') : 'Not Set';
+}
 
 export default function LaboratoryPage() {
+  const [progressFilter, setProgressFilter] = useState<'all' | 'in_progress' | 'with_results'>('all');
   const [search, setSearch] = useState('');
-  const [statusTab, setStatusTab] = useState('all');
-  const [categoryTab, setCategoryTab] = useState('all');
-  const [page, setPage] = useState(1);
-
-  const { data, isLoading, error } = useLabResults({
-    status: statusTab === 'all' ? undefined : statusTab,
-    category: categoryTab === 'all' ? undefined : categoryTab,
-    page,
-    limit: PAGE_SIZE,
+  const { data, isLoading, error } = useLabResults({ page: 1, limit: 10000 });
+  const patientsQuery = usePatients({ limit: 100 });
+  const schemaQuery = useQuery({
+    queryKey: ['lab-results-schema'],
+    queryFn: async () => {
+      const response = await fetch('/api/lab-results/schema');
+      if (!response.ok) throw new Error('Unable to load lab result types.');
+      return response.json() as Promise<ResultGroup[]>;
+    },
+    staleTime: 60 * 60 * 1000,
   });
 
-  const results = data?.data ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const patientNames = useMemo(() => new Map((patientsQuery.data?.data ?? []).map((patient) => [
+    patient.id,
+    `${patient.first_name} ${patient.last_name}`.trim(),
+  ])), [patientsQuery.data]);
+  const collectionNames = useMemo(() => new Map((schemaQuery.data ?? []).map((item) => [item.collection, item.label])), [schemaQuery.data]);
+  const allResults = data?.data ?? [];
+  const inProgressCount = allResults.filter((item) => progressText(item.status) === 'In Progress').length;
+  const withResultsCount = allResults.filter((item) => progressText(item.status) === 'With Results').length;
 
-  const filtered = search
-    ? results.filter((l: LabResult) => {
-        const name = getPatientName(l.patient_id).toLowerCase();
-        return name.includes(search.toLowerCase()) || l.test_name.toLowerCase().includes(search.toLowerCase());
-      })
-    : results;
+  const filtered = allResults.filter((item) => {
+    const progress = progressText(item.status);
+    const matchesStatus = progressFilter === 'all'
+      || (progressFilter === 'in_progress' && progress === 'In Progress')
+      || (progressFilter === 'with_results' && progress === 'With Results');
+    const patientId = typeof item.patient_id === 'string' ? item.patient_id : item.patient_id.id;
+    const patientName = patientNames.get(patientId) ?? (patientsQuery.isLoading ? 'Loading patient...' : 'Unknown patient');
+    const haystack = `${patientName} ${item.test_name} ${item.result_collection ?? ''} ${item.remarks ?? ''}`.toLowerCase();
+    return matchesStatus && (!search || haystack.includes(search.toLowerCase()));
+  });
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Laboratory" description="Manage and track all laboratory requests and results" />
+      <PageHeader title="Laboratory" description="Overview of results and encoding progress across all EHR laboratory collections." />
 
-      {/* Status tabs */}
-      <div className="flex gap-1.5 flex-wrap">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => { setStatusTab(tab); setPage(1); }}
-            className={cn(
-              'h-8 px-3 rounded-lg text-xs font-medium capitalize transition-colors',
-              statusTab === tab
-                ? 'bg-blue-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50',
-            )}
-            id={`status-tab-${tab}`}
-          >
-            {tab === 'all' ? 'All Results' : tab}
-          </button>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard title="All Results" value={allResults.length} icon={FlaskConical} iconColor="text-blue-600" subtitle="Across laboratory collections" />
+        <StatCard title="In Progress" value={inProgressCount} icon={Activity} iconColor="text-amber-600" subtitle="Awaiting result entry" />
+        <StatCard title="With Results" value={withResultsCount} icon={CheckCircle2} iconColor="text-emerald-600" subtitle="Results recorded" />
       </div>
 
-      {/* Category tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="border-b border-slate-100 overflow-x-auto">
-          <nav className="flex">
-            {CATEGORY_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => { setCategoryTab(tab.id); setPage(1); }}
-                id={`category-tab-${tab.id}`}
-                className={cn(
-                  'whitespace-nowrap px-4 py-3 text-xs font-medium border-b-2 transition-colors',
-                  categoryTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700',
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['all', 'All Results'],
+              ['in_progress', 'In Progress'],
+              ['with_results', 'With Results'],
+            ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setProgressFilter(value)} className={`h-8 rounded-lg px-3 text-xs font-medium transition-colors ${progressFilter === value ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}
+          </div>
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search patient, test, or collection" aria-label="Search all laboratory results" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" />
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by patient or test..." className="w-64" id="lab-search" />
-        </div>
-
-        {error ? (
-          <div className="p-8 text-center text-sm text-red-600">Unable to load laboratory results.</div>
-        ) : isLoading ? (
-          <TableSkeleton rows={6} cols={6} />
+        {error ? <p role="alert" className="p-8 text-center text-sm text-red-600">Unable to load laboratory results from the EHR.</p> : isLoading ? (
+          <div className="space-y-3 p-5">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-11 animate-pulse rounded-lg bg-slate-100" />)}</div>
         ) : filtered.length === 0 ? (
-          <EmptyState icon={FlaskConical} title="No results found" description="No laboratory records match your current filters." />
+          <div className="p-8"><EmptyState icon={FlaskConical} title="No matching lab results" description="Try another progress filter or search term." /></div>
         ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Laboratory results table">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Patient</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Test</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Requested</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Collected</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">AI Note</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filtered.map((lab: LabResult) => {
-                    const name = getPatientName(lab.patient_id);
-                    return (
-                      <tr key={lab.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <Avatar name={name} size="sm" />
-                            <span className="text-xs font-medium text-slate-900">{name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-xs font-medium text-slate-700">{lab.test_name}</td>
-                        <td className="px-4 py-3.5">
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 capitalize">
-                            {lab.category.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">{formatDate(lab.requested_date)}</td>
-                        <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">{lab.collected_date ? formatDate(lab.collected_date) : '—'}</td>
-                        <td className="px-4 py-3.5"><StatusBadge status={lab.status} /></td>
-                        <td className="px-4 py-3.5 max-w-xs">
-                          {lab.ai_interpretation ? (
-                            <p className="text-xs text-slate-600 truncate" title={lab.ai_interpretation}>
-                              {lab.ai_interpretation}
-                            </p>
-                          ) : <span className="text-xs text-slate-400">—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100">
-              <p className="text-xs text-slate-500">{total} results</p>
-              <div className="flex gap-1.5">
-                <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-7 px-3 rounded-md border border-slate-200 text-xs disabled:opacity-40 hover:bg-slate-50 transition-colors">Previous</button>
-                <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="h-7 px-3 rounded-md border border-slate-200 text-xs disabled:opacity-40 hover:bg-slate-50 transition-colors">Next</button>
-              </div>
-            </div>
-          </>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm" aria-label="All laboratory results">
+              <thead><tr className="border-b border-slate-100 bg-slate-50/70">
+                <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Patient</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Result Type</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Requested / Collected</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Progress</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Remarks</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((item: LabResult) => {
+                  const patientId = typeof item.patient_id === 'string' ? item.patient_id : item.patient_id.id;
+                  const patientName = typeof item.patient_id !== 'string'
+                    ? `${item.patient_id.first_name ?? ''} ${item.patient_id.last_name ?? ''}`.trim() || patientNames.get(patientId)
+                    : patientNames.get(patientId);
+                  return <tr key={`${item.result_collection}-${item.id}`}>
+                    <td className="px-5 py-3.5 text-xs font-medium text-slate-800">{patientName || (patientsQuery.isLoading ? 'Loading patient...' : 'Unknown patient')}</td>
+                    <td className="px-4 py-3.5"><p className="text-xs font-medium text-slate-800">{collectionNames.get(item.result_collection ?? '') ?? item.test_name}</p><p className="mt-0.5 text-[10px] text-slate-400">{item.test_name}</p></td>
+                    <td className="px-4 py-3.5 text-xs text-slate-600">{formatDate(item.collected_date ?? item.released_date)}</td>
+                    <td className="px-4 py-3.5"><ProgressPill status={item.status} /></td>
+                    <td className="max-w-xs truncate px-4 py-3.5 text-xs text-slate-500" title={item.remarks ?? ''}>{item.remarks ?? '—'}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+        {!isLoading && !error && <div className="border-t border-slate-100 px-5 py-3 text-[11px] text-slate-400">Showing {filtered.length} of {allResults.length} loaded EHR results.</div>}
+      </section>
     </div>
   );
+}
+
+function ProgressPill({ status }: { status: string | null }) {
+  if (!status) return <StatusBadge status="unknown" />;
+  if (status === 'with_results' || status === 'completed' || status === 'released') return <StatusBadge status="with_results" />;
+  if (status === 'for_encoding' || status === 'processing' || status === 'pending') return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-amber-50 text-amber-700 ring-amber-600/20">In Progress</span>;
+  return <StatusBadge status={status || 'unknown'} />;
 }

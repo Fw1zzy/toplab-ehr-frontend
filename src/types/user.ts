@@ -1,9 +1,4 @@
-export type UserRole =
-  | 'administrator'
-  | 'doctor'
-  | 'nurse'
-  | 'medical_technologist'
-  | 'staff';
+export type UserRole = string;
 
 export interface DirectusUser {
   id: string;

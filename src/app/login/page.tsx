@@ -6,12 +6,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Cpu, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import Image from 'next/image';
+import toplabIcon from '@/images/toplab-icon.png';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { usePreferences } from '@/lib/auth/PreferencesProvider';
 import { cn } from '@/lib/utils';
 
 const loginSchema = z.object({
-  email: z.string().email('Enter a valid email address'),
+  email: z.string().trim().email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
   remember: z.boolean().optional(),
 });
@@ -22,7 +26,8 @@ function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') ?? '/dashboard';
+  const from = searchParams.get('from');
+  const { preferences } = usePreferences();
 
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -40,8 +45,10 @@ function LoginForm() {
     setAuthError(null);
     try {
       await login(data.email, data.password);
-      // Always land on /dashboard — avoids server-redirect loops if `from` is / or empty
-      const destination = from && from !== '/' && from !== '/login' ? from : '/dashboard';
+      const safeFrom = from && from.startsWith('/') && !from.startsWith('//') && from !== '/' && from !== '/login'
+        ? from
+        : null;
+      const destination = safeFrom ?? preferences.defaultLanding;
       router.replace(destination);
     } catch (err) {
       setAuthError(
@@ -55,7 +62,7 @@ function LoginForm() {
       {/* Mobile logo */}
       <div className="flex lg:hidden items-center gap-2.5 mb-8">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-          <Cpu className="h-4 w-4 text-white" strokeWidth={2.5} />
+          <Image src={toplabIcon} alt="Toplab" width={24} height={24} className="h-auto w-6 object-contain" />
         </div>
         <span className="text-sm font-bold text-slate-900">Toplab EHR</span>
       </div>
@@ -65,12 +72,6 @@ function LoginForm() {
         <p className="mt-1 text-sm text-slate-500">
           Enter your credentials to access the EHR system.
         </p>
-      </div>
-
-      {/* Demo credentials hint */}
-      <div className="mb-5 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5">
-        <p className="text-xs font-medium text-blue-700 mb-1">Demo credentials</p>
-        <p className="text-xs text-blue-600 font-mono">admin@toplab.com / password</p>
       </div>
 
       {/* Error */}
@@ -187,7 +188,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex w-[420px] flex-col justify-between bg-blue-600 p-10 text-white flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20">
-            <Cpu className="h-5 w-5 text-white" strokeWidth={2.5} />
+            <Image src={toplabIcon} alt="Toplab" width={28} height={28} className="h-auto w-7 object-contain" />
           </div>
           <div>
             <p className="text-base font-bold leading-none">Toplab</p>
@@ -215,7 +216,7 @@ export default function LoginPage() {
 
       {/* Right panel — login form wrapped in Suspense for useSearchParams */}
       <div className="flex flex-1 items-center justify-center p-6">
-        <Suspense fallback={<div className="w-full max-w-sm animate-pulse space-y-4"><div className="h-8 w-48 bg-slate-200 rounded" /><div className="h-10 bg-slate-100 rounded-lg" /><div className="h-10 bg-slate-100 rounded-lg" /></div>}>
+        <Suspense fallback={<BrandLoader compact label="Preparing sign in" detail="Loading your secure login form" />}>
           <LoginForm />
         </Suspense>
       </div>

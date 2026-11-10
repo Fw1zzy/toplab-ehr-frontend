@@ -14,8 +14,6 @@ export function usePatients(params?: {
   search?: string;
   page?: number;
   limit?: number;
-  status?: string;
-  branch?: string;
 }) {
   return useQuery({
     queryKey: patientKeys.list(params ?? {}),
@@ -36,7 +34,7 @@ export function usePatient(id: string | undefined) {
 export function useCreatePatient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Patient>) => api.patients.create(data),
+    mutationFn: (input: { data: Partial<Patient>; photo?: File }) => api.patients.create(input.data, input.photo),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: patientKeys.lists() });
     },
@@ -46,8 +44,8 @@ export function useCreatePatient() {
 export function useUpdatePatient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Patient> }) =>
-      api.patients.update(id, data),
+    mutationFn: ({ id, data, photo }: { id: string; data: Partial<Patient>; photo?: File }) =>
+      api.patients.update(id, data, photo),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: patientKeys.lists() });
       queryClient.invalidateQueries({ queryKey: patientKeys.detail(variables.id) });

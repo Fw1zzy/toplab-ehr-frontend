@@ -10,10 +10,12 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useRouter } from 'next/navigation';
 import { AddCompanyForm } from '@/components/corporate/AddCompanyForm';
 import { useCompanies, useCreateCompany } from '@/lib/queries/useCompanies';
+import { StatCard } from '@/components/ui/StatCard';
+import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
 
 export default function CompaniesPage() {
   const router = useRouter();
-  const { data, isLoading } = useCompanies();
+  const { data, isLoading, error } = useCompanies();
   const { mutateAsync: createCompany } = useCreateCompany();
   const companies = data?.data ?? [];
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -26,7 +28,7 @@ export default function CompaniesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Companies" 
-        description="Manage your corporate partners and their contracts."
+        description="Corporate partners and contract details from the EHR."
         actions={
           <button
             type="button"
@@ -38,9 +40,13 @@ export default function CompaniesPage() {
           </button>
         }
       />
-      
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-        {companies.length === 0 ? (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatCard title="Companies" value={companies.length} icon={Building2} iconColor="text-blue-600" subtitle="EHR company records" />
+        <StatCard title="Active Contracts" value={companies.filter((company) => company.contract_status === 'Active').length} icon={Building2} iconColor="text-emerald-600" subtitle="Current EHR contract status" />
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        {error ? <p role="alert" className="p-8 text-center text-sm text-red-600">Unable to load company records from the EHR.</p> : isLoading ? <TableSkeleton rows={5} cols={3} /> : companies.length === 0 ? (
           <div className="p-8">
             <EmptyState
               icon={Building2}
@@ -50,14 +56,13 @@ export default function CompaniesPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+              <table className="w-full text-sm text-slate-600">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Company Name</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium">Billing Address</th>
-                  <th className="px-6 py-4 font-medium">ID</th>
-                  <th className="px-6 py-4 font-medium text-right">Actions</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Company Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Contract Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Billing Address</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -67,22 +72,19 @@ export default function CompaniesPage() {
                     className="hover:bg-slate-50/60 cursor-pointer transition-colors"
                     onClick={() => router.push(`/companies/${company.id}`)}
                   >
-                    <td className="px-6 py-4 font-medium text-slate-900">
+                    <td className="px-5 py-3.5 text-xs font-medium text-slate-900">
                       <Link href={`/companies/${company.id}`} className="hover:text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>
                         {company.name}
                       </Link>
                     </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={company.contract_status} />
+                    <td className="px-4 py-3.5">
+                      <StatusBadge status={company.contract_status.toLowerCase()} />
                     </td>
-                    <td className="px-6 py-4 truncate max-w-[200px]" title={company.billing_address}>
-                      {company.billing_address}
+                    <td className="max-w-[280px] truncate px-4 py-3.5 text-xs text-slate-600" title={company.billing_address}>
+                      {company.billing_address || '—'}
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs text-slate-400">
-                      {company.id.split('-')[0]}...
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Link href={`/companies/${company.id}`} className="text-blue-600 hover:text-blue-800 font-medium">
+                    <td className="px-4 py-3.5 text-right">
+                      <Link href={`/companies/${company.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">
                         View
                       </Link>
                     </td>

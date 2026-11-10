@@ -4,7 +4,7 @@ import { AnalyticsFilter } from '@/types';
 
 export const dashboardKeys = {
   metrics: ['dashboard', 'metrics'] as const,
-  appointments: ['dashboard', 'appointments'] as const,
+  encounters: ['dashboard', 'encounters'] as const,
   queue: ['dashboard', 'queue'] as const,
   recentLabs: ['dashboard', 'recentLabs'] as const,
 };
@@ -18,10 +18,10 @@ export function useDashboardMetrics() {
   });
 }
 
-export function useTodayAppointments() {
+export function useTodayEncounters() {
   return useQuery({
-    queryKey: dashboardKeys.appointments,
-    queryFn: () => api.dashboard.getTodayAppointments(),
+    queryKey: dashboardKeys.encounters,
+    queryFn: () => api.dashboard.getTodayEncounters(),
     staleTime: 60_000,
   });
 }
@@ -30,8 +30,8 @@ export function usePatientQueue() {
   return useQuery({
     queryKey: dashboardKeys.queue,
     queryFn: () => api.dashboard.getQueue(),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   });
 }
 

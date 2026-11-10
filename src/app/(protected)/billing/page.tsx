@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Receipt, Plus, Download } from 'lucide-react';
+import { Receipt, Plus, Download, CreditCard, CircleDollarSign, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -10,58 +9,69 @@ import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
 import { useInvoices } from '@/lib/queries/useBillingInventory';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { formatDate, formatCurrency, getPatientFullName } from '@/lib/utils';
+import { usePatients } from '@/lib/queries/usePatients';
+import { useCompanies } from '@/lib/queries/useCompanies';
+import { formatCurrency } from '@/lib/utils';
 import { Invoice } from '@/types';
 import { cn } from '@/lib/utils';
+import { StatCard } from '@/components/ui/StatCard';
+import { NewInvoiceDialog } from '@/components/billing/NewInvoiceDialog';
+import { usePreferences } from '@/lib/auth/PreferencesProvider';
 
-function getPatientName(patientId: string | object): string {
-  if (typeof patientId === 'object') return '';
-  const p = MOCK_PATIENTS.find((pt) => pt.id === patientId);
-  return p ? getPatientFullName(p) : String(patientId);
+function getPatientName(patientId: string | object, names: Map<string, string>, loading: boolean): string {
+  if (typeof patientId === 'object' && patientId) {
+    const patient = patientId as { first_name?: string; last_name?: string; id?: string };
+    return [patient.first_name, patient.last_name].filter(Boolean).join(' ') || names.get(patient.id ?? '') || (loading ? 'Loading patient...' : 'Unknown patient');
+  }
+  return names.get(patientId) ?? (loading ? 'Loading patient...' : 'Unknown patient');
 }
 
 const STATUS_TABS = ['all', 'draft', 'issued', 'unpaid', 'paid'];
-const PAGE_SIZE = 10;
 
 export default function BillingPage() {
-  const router = useRouter();
+  const { preferences } = usePreferences();
+  const PAGE_SIZE = preferences.rowsPerPage;
   const [search, setSearch] = useState('');
   const [statusTab, setStatusTab] = useState('all');
   const [page, setPage] = useState(1);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
 
-  const { data, isLoading, error } = useInvoices({
-    status: statusTab === 'all' ? undefined : statusTab,
-    page,
-    limit: PAGE_SIZE,
-  });
+  const { data, isLoading, error } = useInvoices({ page: 1, limit: 100 });
+  const patientsQuery = usePatients({ limit: 100 });
+  const companiesQuery = useCompanies();
 
-  const invoices = data?.data ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const allInvoices = data?.data ?? [];
+  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
+  const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
+  const statusFiltered = statusTab === 'all' ? allInvoices : allInvoices.filter((invoice) => invoice.status === statusTab);
 
-  const filtered = search
-    ? invoices.filter((inv: Invoice) => {
-        const name = getPatientName(inv.patient_id).toLowerCase();
-        return name.includes(search.toLowerCase()) || inv.invoice_number.toLowerCase().includes(search.toLowerCase());
+  const filtered = search.trim()
+    ? statusFiltered.filter((inv: Invoice) => {
+        const patientName = getPatientName(inv.patient_id, patientNames, patientsQuery.isLoading).toLowerCase();
+        const companyName = inv.company_id ? companyNames.get(inv.company_id) ?? '' : '';
+        return patientName.includes(search.toLowerCase())
+          || companyName.toLowerCase().includes(search.toLowerCase())
+          || (inv.invoice_number ?? '').toLowerCase().includes(search.toLowerCase());
       })
-    : invoices;
+    : statusFiltered;
 
-  // Summary stats
-  const totalRevenue = invoices.reduce((s: number, i: Invoice) => s + i.paid_amount, 0);
-  const outstanding = invoices.reduce((s: number, i: Invoice) => s + i.balance, 0);
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const pagedInvoices = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const paidInvoiceValue = allInvoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + invoice.total_amount, 0);
+  const issuedUnpaidValue = allInvoices.filter((invoice) => invoice.status === 'issued' || invoice.status === 'unpaid').reduce((sum, invoice) => sum + invoice.total_amount, 0);
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Billing"
-        description="Manage invoices and payment records"
+        description="Review invoice amounts and statuses from the EHR."
         actions={
           <>
             <button type="button" className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors" id="export-invoices-btn">
               <Download className="h-3.5 w-3.5" /> Export
             </button>
-            <button type="button" className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors" id="create-invoice-btn">
+            <button type="button" onClick={() => setNewInvoiceOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors" id="create-invoice-btn">
               <Plus className="h-3.5 w-3.5" /> New Invoice
             </button>
           </>
@@ -70,17 +80,10 @@ export default function BillingPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Invoices', value: total.toString(), color: 'text-slate-900' },
-          { label: 'Collected', value: formatCurrency(totalRevenue), color: 'text-emerald-600' },
-          { label: 'Outstanding', value: formatCurrency(outstanding), color: 'text-red-600' },
-          { label: 'Draft', value: invoices.filter((i: Invoice) => i.status === 'draft').length.toString(), color: 'text-slate-500' },
-        ].map((card) => (
-          <div key={card.label} className="bg-white rounded-xl border border-slate-200 px-4 py-3.5">
-            <p className="text-xs text-slate-500">{card.label}</p>
-            <p className={`text-lg font-bold mt-0.5 ${card.color}`}>{card.value}</p>
-          </div>
-        ))}
+        <StatCard title="Total Invoices" value={data?.total ?? 0} icon={Receipt} iconColor="text-blue-600" subtitle="From EHR" />
+        <StatCard title="Paid Invoice Value" value={paidInvoiceValue} icon={CircleDollarSign} iconColor="text-emerald-600" isCurrency subtitle="Invoices marked paid" />
+        <StatCard title="Issued / Unpaid Value" value={issuedUnpaidValue} icon={Wallet} iconColor="text-amber-600" isCurrency subtitle="Based on invoice status" />
+        <StatCard title="Draft" value={allInvoices.filter((invoice) => invoice.status === 'draft').length} icon={CreditCard} iconColor="text-slate-500" />
       </div>
 
       {/* Status tabs + table */}
@@ -105,7 +108,7 @@ export default function BillingPage() {
         </div>
 
         <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by patient or invoice #..." className="w-72" id="billing-search" />
+          <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search by patient, company, or invoice #..." className="w-72" id="billing-search" />
         </div>
 
         {error ? (
@@ -121,33 +124,28 @@ export default function BillingPage() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
                     <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Invoice #</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Patient</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Billed To</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Type</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Date</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Balance</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total Amount</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filtered.map((inv: Invoice) => {
-                    const name = getPatientName(inv.patient_id);
+                  {pagedInvoices.map((inv: Invoice) => {
+                    const name = getPatientName(inv.patient_id, patientNames, patientsQuery.isLoading);
+                    const billedTo = inv.company_id ? companyNames.get(inv.company_id) ?? 'Unknown company' : name;
                     return (
                       <tr key={inv.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="px-5 py-3.5 text-xs font-mono text-blue-600 font-medium">{inv.invoice_number}</td>
+                        <td className="px-5 py-3.5 text-xs font-mono text-blue-600 font-medium">{inv.invoice_number ?? '—'}</td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
                             <Avatar name={name} size="xs" />
-                            <span className="text-xs font-medium text-slate-900">{name}</span>
+                            <span className="text-xs font-medium text-slate-900">{billedTo}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-xs text-slate-600 capitalize">{inv.type === 'company' ? 'Corporate' : 'Outpatient'}</td>
-                        <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">{formatDate(inv.invoice_date)}</td>
-                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-900 text-right tabular-nums">{formatCurrency(inv.total)}</td>
-                        <td className="px-4 py-3.5 text-xs text-right tabular-nums">
-                          {inv.balance > 0 ? <span className="text-red-600 font-medium">{formatCurrency(inv.balance)}</span> : <span className="text-emerald-600 font-medium">Settled</span>}
-                        </td>
-                        <td className="px-4 py-3.5"><StatusBadge status={inv.status} /></td>
+                        <td className="px-4 py-3.5 text-xs text-slate-600">{inv.type ?? '—'}</td>
+                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-900 text-right tabular-nums">{formatCurrency(inv.total_amount)}</td>
+                        <td className="px-4 py-3.5"><StatusBadge status={inv.status ?? 'unknown'} /></td>
                       </tr>
                     );
                   })}
@@ -165,6 +163,7 @@ export default function BillingPage() {
           </>
         )}
       </div>
+      <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} />
     </div>
   );
 }

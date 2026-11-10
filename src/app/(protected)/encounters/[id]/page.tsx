@@ -1,11 +1,12 @@
 'use client';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Brain, Receipt, Printer, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Receipt } from 'lucide-react';
 import { useEncounter } from '@/lib/queries/useEncounters';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { getPatientFullName, formatDateTime, formatCurrency } from '@/lib/utils';
+import { usePatients } from '@/lib/queries/usePatients';
+import { useCompanies } from '@/lib/queries/useCompanies';
+import { formatDateTime, formatCurrency } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -16,53 +17,24 @@ export default function EncounterDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: encounter, isLoading } = useEncounter(id);
+  const patientsQuery = usePatients({ limit: 100 });
+  const companiesQuery = useCompanies();
+  const requestsQuery = useQuery({
+    queryKey: ['corporate-requests', 'encounter-labels'],
+    queryFn: () => api.corporateRequests.getAll({ page: 1, limit: 100 }),
+  });
+  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
+  const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
+  const requestNames = new Map((requestsQuery.data?.data ?? []).map((request) => [request.id, request.company_code || request.request_type]));
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
       if (!encounter) throw new Error('No encounter data');
-      const isCorporate = encounter.encounter_type === 'PEME' || encounter.encounter_type === 'APE';
-      const type = isCorporate ? 'company' : 'individual';
-      let invoiceNumber = '';
-      
-      if (isCorporate) {
-        // Random 6 letters that "matches the company name"
-        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const rand = Array.from({length: 6}, () => letters.charAt(Math.floor(Math.random() * letters.length))).join('');
-        invoiceNumber = rand;
-      } else {
-        invoiceNumber = 'OPD-' + Math.floor(100000 + Math.random() * 900000).toString();
-      }
-
-      const total = encounter.services_selected?.reduce((sum, s) => sum + s.price, 0) || 0;
-
-      const payload = {
-        invoice_number: invoiceNumber,
-        patient_id: encounter.patient_id,
-        company_id: isCorporate ? 'company-001' : null, // Mock company ID
-        type: type as any,
-        status: (isCorporate ? 'issued' : 'unpaid') as any,
-        invoice_date: new Date().toISOString(),
-        due_date: new Date().toISOString(),
-        subtotal: total,
-        discount: 0,
-        tax: 0,
-        total: total,
-        paid_amount: 0,
-        balance: total,
-        encounter_id: encounter.id,
-      };
-
-      // We don't have api.invoices.create, but we can simulate it or add it to mock. 
-      // Let's call a mock API function directly if it existed, or just mock it here.
-      // Wait, mock API has invoices but no create. I'll just push to MOCK_INVOICES if I must, but since we are client side, we need a query.
-      // Let's assume we implement api.invoices.create
-      return api.invoices.create(payload);
+      return api.invoices.generateForEncounter(encounter);
     },
-    onSuccess: (data) => {
-      // Invalidate invoices
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      // Navigate to billing
-      router.push(`/billing/invoices/${data.id}`);
+      router.push('/billing/invoices');
     }
   });
 
@@ -73,10 +45,16 @@ export default function EncounterDetailPage() {
     } />
   );
 
-  const patient = MOCK_PATIENTS.find((p) => p.id === encounter.patient_id);
-  const patientName = patient ? getPatientFullName(patient) : String(encounter.patient_id);
+  const patientId = typeof encounter.patient_id === 'string' ? encounter.patient_id : encounter.patient_id.id;
+  const patientName = typeof encounter.patient_id !== 'string'
+    ? `${encounter.patient_id.first_name ?? ''} ${encounter.patient_id.last_name ?? ''}`.trim() || patientNames.get(patientId)
+    : patientNames.get(patientId);
+  const companyName = encounter.company ? companyNames.get(encounter.company) ?? 'Unknown company' : '—';
+  const corporateRequestName = encounter.corporate_request
+    ? requestNames.get(encounter.corporate_request) ?? 'Corporate request'
+    : '—';
 
-  const isCorporate = encounter.encounter_type === 'PEME' || encounter.encounter_type === 'APE';
+  const isCorporate = encounter.encounter_type?.startsWith('PEME') || encounter.encounter_type?.startsWith('APE');
   const selectedServices = encounter.services_selected || [];
   const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
 
@@ -96,16 +74,16 @@ export default function EncounterDetailPage() {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-slate-400 font-mono">{encounter.id}</p>
-            <h1 className="text-lg font-bold text-slate-900 mt-1">{patientName}</h1>
+             <h1 className="text-lg font-bold text-slate-900 mt-1">{patientName || (patientsQuery.isLoading ? 'Loading patient...' : 'Unknown patient')}</h1>
             <p className="text-sm text-slate-500">{formatDateTime(encounter.encounter_date)}</p>
           </div>
           <StatusBadge status={encounter.status} />
         </div>
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           {[
-            ['Provider', encounter.provider_name ?? '—'],
-            ['Encounter Type', encounter.encounter_type === 'OPD' ? 'Outpatient (OPD)' : encounter.encounter_type === 'PEME' ? 'Newly Hired (PEME)' : encounter.encounter_type === 'APE' ? 'Annual Physical Exam (APE)' : '—'],
-            ['Company', encounter.company ?? '—'],
+            ['Encounter Type', encounter.encounter_type ?? '—'],
+            ['Company', companyName],
+            ['Corporate Request', corporateRequestName],
             ['Payment Route', encounter.payment_route ?? '—'],
           ].map(([label, value]) => (
             <div key={label}>
@@ -116,33 +94,7 @@ export default function EncounterDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left Col: Notes */}
-        <div className="lg:col-span-1 space-y-5">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-900">Chief Complaint</h2>
-            <p className="text-xs text-slate-600">{encounter.chief_complaint ?? 'None documented.'}</p>
-            <h2 className="text-sm font-semibold text-slate-900 pt-3 border-t border-slate-100">Clinical Notes</h2>
-            <p className="text-xs text-slate-600">{encounter.clinical_notes ?? 'No clinical notes recorded.'}</p>
-            <h2 className="text-sm font-semibold text-slate-900 pt-3 border-t border-slate-100">Diagnosis</h2>
-            <p className="text-xs text-slate-600">{encounter.diagnosis ?? 'No diagnosis recorded.'}</p>
-          </div>
-          {encounter.ai_summary && (
-            <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <Brain className="h-4 w-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-slate-900">AI Clinical Summary</h2>
-              </div>
-              <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">AI-GENERATED</p>
-                <p className="text-xs text-slate-700 leading-relaxed">{encounter.ai_summary}</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Col: Services */}
-        <div className="lg:col-span-2 space-y-5">
+      <div className="space-y-5">
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-sm font-semibold text-slate-900">Service</h2>
@@ -168,7 +120,7 @@ export default function EncounterDetailPage() {
                             {formatCurrency(srv.price)}
                           </td>
                           <td className="px-4 py-2 text-emerald-900 border-l border-emerald-800 capitalize">
-                            Laboratory
+                            {srv.department ?? '—'}
                           </td>
                         </tr>
                       ))}
@@ -183,9 +135,6 @@ export default function EncounterDetailPage() {
                 </div>
 
                 <div className="mt-4 flex justify-center">
-                  <button type="button" className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm text-sm">
-                    <Printer className="h-4 w-4" /> Print
-                  </button>
                 </div>
               </div>
             ) : (
@@ -199,7 +148,6 @@ export default function EncounterDetailPage() {
             <h2 className="text-sm font-semibold text-slate-900">Encounter Date</h2>
             <div className="relative">
               <input type="text" readOnly value={formatDateTime(encounter.encounter_date)} className="w-full border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 bg-emerald-50/30 outline-none" />
-              <X className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-600 cursor-pointer" />
             </div>
             <div>
               <button 
@@ -213,7 +161,6 @@ export default function EncounterDetailPage() {
               </button>
             </div>
           </div>
-        </div>
       </div>
     </div>
   );

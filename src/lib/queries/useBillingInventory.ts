@@ -43,7 +43,6 @@ export const inventoryKeys = {
 
 export function useInventory(params?: {
   status?: string;
-  category?: string;
   search?: string;
   page?: number;
   limit?: number;

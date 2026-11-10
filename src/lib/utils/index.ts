@@ -17,8 +17,10 @@ export function getPatientFullName(patient: Patient): string {
   return parts.join(' ');
 }
 
-export function getPatientAge(dateOfBirth: string): number {
-  return differenceInYears(new Date(), new Date(dateOfBirth));
+export function getPatientAge(dateOfBirth: string | null): number | null {
+  if (!dateOfBirth) return null;
+  const date = new Date(dateOfBirth);
+  return Number.isNaN(date.getTime()) ? null : differenceInYears(new Date(), date);
 }
 
 export function formatDate(date: string | null | undefined, fmt = 'MMM d, yyyy'): string {

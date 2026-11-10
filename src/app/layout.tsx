@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import toplabIcon from '@/images/toplab-icon.png';
 import './globals.css';
 import { Providers } from './providers';
 
@@ -16,6 +17,11 @@ export const metadata: Metadata = {
   },
   description: 'Electronic Health Record System by Toplab — modern, AI-enhanced clinical management',
   robots: { index: false, follow: false }, // EHR should not be indexed
+  icons: {
+    icon: toplabIcon.src,
+    shortcut: toplabIcon.src,
+    apple: toplabIcon.src,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

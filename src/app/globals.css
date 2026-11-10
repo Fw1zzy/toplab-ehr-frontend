@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+html[data-table-density='compact'] table th,
+html[data-table-density='compact'] table td {
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
+}
+
 @theme {
   --font-family-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --color-blue-50: #eff6ff;
@@ -35,8 +41,67 @@
 }
 
 /* Print styles */
+.patient-qr-id-card {
+  aspect-ratio: 85.6 / 53.98;
+}
+
+@page {
+  size: letter portrait;
+  margin: 0.5in;
+}
+
 @media print {
   .no-print {
     display: none !important;
+  }
+
+  html,
+  body {
+    width: 7.5in !important;
+    height: 10in !important;
+    min-height: 10in !important;
+    max-height: 10in !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  [data-patient-id-print],
+  [data-patient-id-print] * {
+    visibility: visible !important;
+  }
+
+  [data-patient-id-print] {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 85.6mm !important;
+    height: 53.98mm !important;
+    max-width: none !important;
+    padding: 2.54mm !important;
+    grid-template-columns: 20.83mm 29.845mm 24.765mm !important;
+    gap: 2.54mm !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  [data-patient-id-print] .patient-id-photo {
+    width: 20.83mm !important;
+    height: 20.83mm !important;
+    aspect-ratio: 1 / 1 !important;
+  }
+
+  [data-patient-id-print] .patient-id-qr {
+    width: 24.765mm !important;
+    max-width: 24.765mm !important;
+    padding: 0.9mm !important;
   }
 }

@@ -10,11 +10,12 @@ import issuedImg from '@/images/ISSUED.png';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import { api } from '@/lib/api';
-import { MOCK_PATIENTS } from '@/lib/api/mock/data';
-import { getPatientFullName, formatDate } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { usePatients } from '@/lib/queries/usePatients';
+import { useCompanies } from '@/lib/queries/useCompanies';
 
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,19 +28,35 @@ export default function InvoiceDetailPage() {
     enabled: !!id,
   });
 
-  const [isGenerated, setIsGenerated] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   const updateInvoiceMutation = useMutation({
-    mutationFn: async (status: string) => {
-      // Call the mock api to ensure the status is actually persisted
-      return api.invoices.update(id, { status: status as any });
+    mutationFn: async () => {
+      return api.invoices.receivePayment(id);
     },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(['invoices', id], updated);
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', id] });
     }
+  });
+  const lineItemsQuery = useQuery({
+    queryKey: ['invoice-line-items', id],
+    queryFn: () => api.invoices.getLineItems(id),
+    enabled: !!id,
+  });
+  const patientsQuery = usePatients({ limit: 100 });
+  const companiesQuery = useCompanies();
+  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
+  const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
+
+  const generateStatementMutation = useMutation({
+    mutationFn: () => api.invoices.generateBillingStatement(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', id] });
+      setIsGenerateModalOpen(false);
+    },
   });
 
   if (isLoading) return <LoadingSkeleton rows={5} />;
@@ -49,26 +66,29 @@ export default function InvoiceDetailPage() {
     } />
   );
 
-  const isCorporate = invoice.type === 'company';
+  const isCorporate = invoice.type === 'Corporate';
+  const lineItems = lineItemsQuery.data ?? [];
   
   let patientName = '—';
   if (invoice.patient_id) {
-    const pId = typeof invoice.patient_id === 'string' ? invoice.patient_id : (invoice.patient_id as any).id;
-    const p = MOCK_PATIENTS.find(pt => pt.id === pId);
-    if (p) patientName = getPatientFullName(p);
+    const patientId = typeof invoice.patient_id === 'string' ? invoice.patient_id : invoice.patient_id.id;
+    patientName = typeof invoice.patient_id !== 'string'
+      ? `${invoice.patient_id.first_name ?? ''} ${invoice.patient_id.last_name ?? ''}`.trim() || patientNames.get(patientId) || 'Unknown patient'
+      : patientNames.get(patientId) ?? (patientsQuery.isLoading ? 'Loading patient...' : 'Unknown patient');
   }
+  const companyName = invoice.company_id ? companyNames.get(invoice.company_id) ?? (companiesQuery.isLoading ? 'Loading company...' : 'Unknown company') : '—';
 
   const confirmGenerate = () => {
-    setIsGenerated(true);
-    setIsGenerateModalOpen(false);
+    generateStatementMutation.mutate();
   };
 
   const confirmPayment = () => {
-    updateInvoiceMutation.mutate('paid');
+    updateInvoiceMutation.mutate();
     setIsPaymentModalOpen(false);
   };
 
   const isPaid = invoice.status === 'paid';
+  const canGenerateStatement = invoice.status === 'draft';
 
   return (
     <div className="space-y-6 pb-20">
@@ -95,29 +115,27 @@ export default function InvoiceDetailPage() {
         <div className="p-8 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
           <div>
             <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Invoice Number</p>
-            <h2 className="text-2xl font-bold text-blue-600 font-mono tracking-tight">{invoice.invoice_number}</h2>
+            <h2 className="text-2xl font-bold text-blue-600 font-mono tracking-tight">{invoice.invoice_number ?? 'Invoice'}</h2>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <span className="text-sm text-slate-500">{formatDate(invoice.invoice_date)}</span>
+            <StatusBadge status={invoice.status ?? 'unknown'} />
           </div>
         </div>
 
         {/* Middle Section (Details) */}
-        <div className="p-8 grid grid-cols-2 gap-10">
+        <div className="grid grid-cols-1 gap-6 p-4 sm:grid-cols-2 sm:gap-8 sm:p-6 lg:gap-10 lg:p-8">
           <div className="space-y-6">
             <div>
               <p className="text-sm font-medium text-slate-500 mb-1">Billed To</p>
               <div className="flex items-center gap-2.5 text-slate-900 font-semibold text-lg">
                 {isCorporate ? <Building2 className="h-5 w-5 text-blue-600" /> : <User className="h-5 w-5 text-blue-600" />}
-                <span>{isCorporate ? (invoice.company_id || '—') : patientName}</span>
+                <span>{isCorporate ? companyName : patientName}</span>
               </div>
             </div>
 
             <div className="pt-6 border-t border-slate-100 mt-6">
-              <p className="text-sm font-medium text-slate-500 mb-1">Total Amount Due</p>
-              <span className="text-3xl font-bold text-slate-900 tracking-tight">
-                ₱ {invoice.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+              <p className="text-sm font-medium text-slate-500 mb-1">Invoice Total</p>
+              <span className="text-3xl font-bold text-slate-900 tracking-tight">{formatCurrency(invoice.total_amount)}</span>
             </div>
           </div>
 
@@ -125,7 +143,7 @@ export default function InvoiceDetailPage() {
             <div>
               <p className="text-sm font-medium text-slate-500 mb-1">Account Type</p>
               <p className="text-slate-900 font-medium">
-                {isCorporate ? 'Corporate (B2B)' : 'Outpatient (Personal)'}
+                {invoice.type ?? '—'}
               </p>
             </div>
             
@@ -146,9 +164,26 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
 
+        <section className="border-t border-slate-100 px-5 py-5 sm:px-8" aria-label="Invoice line items">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Invoice Line Items</h2>
+          {lineItemsQuery.isLoading ? <p className="text-xs text-slate-400">Loading line items...</p> : lineItemsQuery.error ? (
+            <p role="alert" className="text-xs text-amber-700">Invoice lines are not available to this account.</p>
+          ) : lineItems.length === 0 ? (
+            <p className="text-xs text-slate-400">The EHR returned no line-item records for this invoice.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-500"><th className="py-2 pr-4 font-medium">Description</th><th className="py-2 text-right font-medium">Amount</th></tr></thead>
+                <tbody className="divide-y divide-slate-50">{lineItems.map((item) => <tr key={item.id}><td className="py-3 pr-4 text-xs text-slate-700">{item.description || '—'}</td><td className="py-3 text-right text-xs font-medium text-slate-800">{formatCurrency(item.amount)}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         {/* Actions Footer */}
         <div className="px-8 py-6 bg-white border-t border-slate-100 flex justify-start gap-4">
-          {!isGenerated && !isPaid ? (
+          {(generateStatementMutation.error || updateInvoiceMutation.error) && <p role="alert" className="my-auto text-xs text-red-600">{(generateStatementMutation.error || updateInvoiceMutation.error) instanceof Error ? (generateStatementMutation.error || updateInvoiceMutation.error)?.message : 'Invoice action failed.'}</p>}
+          {canGenerateStatement ? (
             <button 
               type="button" 
               onClick={() => setIsGenerateModalOpen(true)}
@@ -185,7 +220,7 @@ export default function InvoiceDetailPage() {
               Generate Statement
             </Dialog.Title>
             <Dialog.Description className="text-sm text-slate-500 mb-8 leading-relaxed">
-              Are you sure you want to generate the final billing statement? This action locks the invoice amounts.
+              The EHR will run its configured billing-statement workflow for this invoice.
             </Dialog.Description>
             <div className="flex items-center justify-end gap-3">
               <button
@@ -196,9 +231,10 @@ export default function InvoiceDetailPage() {
               </button>
               <button
                 onClick={confirmGenerate}
+                disabled={generateStatementMutation.isPending}
                 className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm"
               >
-                Confirm Generation
+                {generateStatementMutation.isPending ? 'Generating...' : 'Confirm Generation'}
               </button>
             </div>
           </Dialog.Content>
@@ -214,7 +250,7 @@ export default function InvoiceDetailPage() {
               Receive Payment
             </Dialog.Title>
             <Dialog.Description className="text-sm text-slate-500 mb-8 leading-relaxed">
-              Are you sure you want to mark this invoice as paid? This action will formally record the receipt of funds and cannot be undone.
+              The EHR will run its configured receive-payment workflow and update the invoice status.
             </Dialog.Description>
             <div className="flex items-center justify-end gap-3">
               <button
@@ -225,9 +261,10 @@ export default function InvoiceDetailPage() {
               </button>
               <button
                 onClick={confirmPayment}
+                disabled={updateInvoiceMutation.isPending}
                 className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm"
               >
-                Confirm Payment
+                {updateInvoiceMutation.isPending ? 'Processing...' : 'Confirm Payment'}
               </button>
             </div>
           </Dialog.Content>
