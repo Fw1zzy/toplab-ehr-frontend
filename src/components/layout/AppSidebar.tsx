@@ -27,8 +27,7 @@ import {
   Building2,
   ClipboardCheck,
 } from 'lucide-react';
-import Image from 'next/image';
-import toplabIcon from '@/images/toplab-icon.png';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 export interface NavItem {
   label: string;
@@ -135,9 +134,7 @@ export function AppSidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: A
           isCollapsed ? 'justify-center px-0' : 'px-4 gap-2.5',
         )}
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 flex-shrink-0">
-          <Image src={toplabIcon} alt="Toplab" width={24} height={24} className="h-auto w-6 object-contain" />
-        </div>
+        <BrandLogo size="sm" alt="TOPLAB" className="flex-shrink-0" />
         {!isCollapsed && (
           <div>
             <span className="text-sm font-bold text-slate-900 tracking-tight">Toplab</span>

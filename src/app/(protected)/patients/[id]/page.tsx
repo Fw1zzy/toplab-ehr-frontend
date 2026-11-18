@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Phone, Mail, MapPin, User, FlaskConical, ClipboardList, CreditCard, Building2, History } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, User, FlaskConical, ClipboardList, CreditCard, Building2, History, QrCode } from 'lucide-react';
 import { usePatient } from '@/lib/queries/usePatients';
 import { usePatientLabResults } from '@/lib/queries/useLabResults';
 import { usePatientInvoices } from '@/lib/queries/useBillingInventory';
@@ -26,6 +26,7 @@ const TABS = [
   { id: 'laboratory', label: 'Laboratory', icon: FlaskConical },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'history', label: 'Interclinic History', icon: History },
+  { id: 'qr-id', label: 'Patient QR ID', icon: QrCode },
 ];
 
 function formatHistoryDate(value: string | null) {
@@ -159,8 +160,6 @@ export default function PatientProfilePage() {
           </div>
         </div>
       </div>
-
-      <PatientQrIdCard patient={{ id: patient.id, name: fullName, patientNumber: patient.patient_id, avatarFileId: patient.avatar_id }} />
 
       {/* Tabs */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -372,6 +371,10 @@ export default function PatientProfilePage() {
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === 'qr-id' && (
+            <PatientQrIdCard patient={{ id: patient.id, name: fullName, patientNumber: patient.patient_id, avatarFileId: patient.avatar_id }} />
           )}
 
         </div>

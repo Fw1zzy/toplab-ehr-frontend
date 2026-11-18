@@ -18,8 +18,6 @@ interface GlobalSearchResult {
   href: string;
 }
 
-const BRANCHES = ['Baguio Branch'];
-
 interface TopbarProps {
   sidebarCollapsed: boolean;
   onMenuClick: () => void;
@@ -29,9 +27,7 @@ export function Topbar({ sidebarCollapsed, onMenuClick }: TopbarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [branch, setBranch] = useState('Baguio Branch');
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showBranchMenu, setShowBranchMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   useEffect(() => {
     const timer = setTimeout(() => setSearchQuery(search.trim()), 250);
@@ -151,41 +147,10 @@ export function Topbar({ sidebarCollapsed, onMenuClick }: TopbarProps) {
 
       <div className="flex-1" />
 
-      {/* Branch selector */}
-      <div className="relative hidden lg:block">
-        <button
-          type="button"
-          onClick={() => setShowBranchMenu((v) => !v)}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-          id="branch-selector"
-          aria-haspopup="true"
-          aria-expanded={showBranchMenu}
-        >
+      {/* Current branch */}
+      <div className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 lg:flex" aria-label="Current branch">
           <Building2 className="h-3.5 w-3.5 text-slate-400" />
-          <span>{branch}</span>
-          <ChevronDown className="h-3 w-3 text-slate-400" />
-        </button>
-
-        {showBranchMenu && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setShowBranchMenu(false)} />
-            <div className="absolute right-0 top-9 z-20 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-              {BRANCHES.map((b) => (
-                <button
-                  key={b}
-                  type="button"
-                  onClick={() => { setBranch(b); setShowBranchMenu(false); }}
-                  className={cn(
-                    'flex w-full items-center px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors',
-                    b === branch ? 'font-semibold text-blue-600' : 'text-slate-700',
-                  )}
-                >
-                  {b}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+          <span>Baguio Branch</span>
       </div>
 
       {/* Notifications */}

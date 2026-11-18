@@ -1,5 +1,4 @@
-import Image from 'next/image';
-import toplabIcon from '@/images/toplab-icon.png';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 interface BrandLoaderProps {
   label?: string;
@@ -22,9 +21,7 @@ export function BrandLoader({
           <div className="absolute inset-0 rounded-full border border-blue-200/80" />
           <div className="absolute inset-2 rounded-full border border-dashed border-blue-300/80 motion-safe:animate-[spin_16s_linear_infinite] motion-reduce:animate-none" />
           <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-600 motion-safe:animate-spin motion-reduce:animate-none" />
-          <div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-[1.4rem] bg-gradient-to-br from-blue-600 to-blue-800 shadow-[0_14px_36px_-12px_rgba(37,99,235,0.7)] ring-4 ring-white">
-            <Image src={toplabIcon} alt="" width={54} height={54} priority className="h-auto w-12 max-h-12 object-contain" />
-          </div>
+          <BrandLogo size="lg" alt="TOPLAB" priority className="p-0 shadow-[0_14px_36px_-12px_rgba(37,99,235,0.7)] ring-4 ring-white" />
           <span className="absolute right-2 top-3 h-2.5 w-2.5 rounded-full bg-cyan-400 ring-4 ring-[#f4f7fc] motion-safe:animate-pulse" />
         </div>
 

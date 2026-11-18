@@ -3,7 +3,7 @@
 import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Company } from '@/types/corporate';
 
 interface AddCompanyFormProps {
@@ -13,31 +13,25 @@ interface AddCompanyFormProps {
   company?: Company;
 }
 
-export function AddCompanyForm({ open, onOpenChange, onAddCompany, company }: AddCompanyFormProps) {
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+function initialFormData(company?: Company) {
+  return company ? {
+    name: company.name,
+    contract_status: company.contract_status,
+    billing_address: company.billing_address,
+  } : {
     name: '',
-    contract_status: 'Active' as 'Active' | 'Inactive',
+    contract_status: 'Active' as const,
     billing_address: '',
-  });
+  };
+}
 
-  useEffect(() => {
-    if (open) {
-      if (company) {
-        setFormData({
-          name: company.name,
-          contract_status: company.contract_status,
-          billing_address: company.billing_address,
-        });
-      } else {
-        setFormData({
-          name: '',
-          contract_status: 'Active',
-          billing_address: '',
-        });
-      }
-    }
-  }, [open, company]);
+export function AddCompanyForm(props: AddCompanyFormProps) {
+  return <CompanyForm key={`${props.open ? 'open' : 'closed'}-${props.company?.id ?? 'new'}`} {...props} />;
+}
+
+function CompanyForm({ open, onOpenChange, onAddCompany, company }: AddCompanyFormProps) {
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [formData, setFormData] = useState(() => initialFormData(company));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

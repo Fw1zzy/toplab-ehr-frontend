@@ -78,30 +78,14 @@ html[data-table-density='compact'] table td {
     position: fixed !important;
     left: 50% !important;
     top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    width: 85.6mm !important;
-    height: 53.98mm !important;
+    transform: translate(-50%, -50%) scale(0.47578) !important;
+    transform-origin: center center !important;
+    width: 680px !important;
+    height: 428.81px !important;
     max-width: none !important;
-    padding: 2.54mm !important;
-    grid-template-columns: 20.83mm 29.845mm 24.765mm !important;
-    gap: 2.54mm !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
-  }
-
-  [data-patient-id-print] .patient-id-photo {
-    width: 20.83mm !important;
-    height: 20.83mm !important;
-    aspect-ratio: 1 / 1 !important;
-  }
-
-  [data-patient-id-print] .patient-id-qr {
-    width: 24.765mm !important;
-    max-width: 24.765mm !important;
-    padding: 0.9mm !important;
   }
 }

@@ -10,6 +10,7 @@ import {
   rest,
   triggerFlow,
   uploadFiles,
+  updateItem,
   updateMe,
 } from '@likha-erp/likha-sdk';
 import type { CurrentUser, Patient, Encounter, Invoice, Company, CorporateRequest, Employee, CatalogService, InventoryItem } from '@/types';
@@ -667,6 +668,10 @@ export const likhaCompanies = {
   async create(data: Partial<Company>) {
     const row = await likha.request(createItem('company', data));
     return { id: row.id, name: row.name, contract_status: row.contract_status, billing_address: row.billing_address } as Company;
+  },
+  async update(id: string, data: Partial<Company>) {
+    const row = await likha.request(updateItem('company', id, data));
+    return this.mapCompany(row as CmsRecord);
   },
 };
 

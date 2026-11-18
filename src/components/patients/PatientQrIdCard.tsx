@@ -5,8 +5,8 @@ import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle, Printer, RefreshCw, ShieldCheck, Upload, X } from 'lucide-react';
 import QRCode from 'qrcode';
-import toplabLogo from '@/images/toplab-icon.png';
 import { PatientAvatar } from '@/components/patients/PatientAvatar';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -24,6 +24,7 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
   const queryClient = useQueryClient();
   const queryKey = ['patient-qr', patient.id];
   const [qrImage, setQrImage] = useState<{ payload: string; dataUrl: string } | null>(null);
+  const [qrRenderError, setQrRenderError] = useState<{ payload: string; message: string } | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -62,7 +63,12 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
       width: 320,
       color: { dark: '#0f172a', light: '#ffffff' },
     }).then((url) => { if (current) setQrImage({ payload: qrPayload, dataUrl: url }); })
-      .catch(() => { if (current) toast.error('Unable to render the patient QR image.'); });
+      .catch((cause) => {
+        if (!current) return;
+        const message = cause instanceof Error ? cause.message : 'Unable to render the patient QR image.';
+        setQrRenderError({ payload: qrPayload, message });
+        toast.error(message);
+      });
     return () => { current = false; };
   }, [qrPayload]);
 
@@ -90,6 +96,7 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
 
   const busy = issueMutation.isPending || revokeMutation.isPending;
   const activeQrImage = qrPayload && qrImage?.payload === qrPayload ? qrImage.dataUrl : null;
+  const currentQrRenderError = qrPayload && qrRenderError?.payload === qrPayload ? qrRenderError.message : null;
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
@@ -114,7 +121,7 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
 
       {qrQuery.isLoading ? <p className="flex items-center gap-2 text-xs text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Loading patient QR status...</p>
         : qrQuery.error ? <p role="alert" className="text-xs text-red-600">{qrQuery.error instanceof Error ? qrQuery.error.message : 'Unable to load QR status.'}</p>
-          : qrQuery.data?.active && activeQrImage ? <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          : qrQuery.data?.active && activeQrImage ? <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,680px)] xl:items-center">
             <div className="space-y-3">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 no-print">
                 <Upload className="h-3.5 w-3.5" />Choose patient photo for ID
@@ -126,26 +133,42 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
               {qrQuery.data.createdAt && <p className="text-[10px] text-slate-400">Generated {new Date(qrQuery.data.createdAt).toLocaleString()} · No expiration</p>}
             </div>
 
-            <div data-patient-id-print className="patient-qr-id-card relative grid w-full max-w-[600px] grid-cols-[0.9fr_1.25fr_0.9fr] items-center gap-4 overflow-hidden rounded-2xl border border-blue-100 border-l-4 border-l-blue-700 bg-gradient-to-br from-white via-white to-blue-50 p-5 shadow-sm">
-              <div className="patient-id-photo flex aspect-square w-full max-w-[160px] self-center items-center justify-center overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200">
-                {photo ? <Image src={photo} alt={`${patient.name} ID`} width={160} height={160} unoptimized className="h-full w-full object-cover" />
-                  : <PatientAvatar patientId={patient.id} avatarFileId={patient.avatarFileId} name={patient.name} size="xl" className="h-full w-full rounded-xl" />}
+            <div data-patient-id-print className="patient-qr-id-card relative block w-full max-w-[680px] overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-white to-blue-50 shadow-sm">
+              <div className="patient-id-header absolute inset-x-0 top-0 z-0 flex h-[24%] items-center justify-between bg-gradient-to-r from-[#243f98] via-[#2d4699] to-[#243b88] px-5">
+                <span className="text-[13px] font-semibold uppercase tracking-[0.16em] text-blue-100">Patient identification</span>
+                <span className="flex items-center gap-2 text-[14px] font-bold tracking-[0.16em] text-white">
+                  <BrandLogo size="xs" tone="inverse" alt="TOPLAB" />TOPLAB
+                </span>
               </div>
-              <div className="patient-id-details min-w-0">
-                <div className="patient-id-brand mb-3 flex items-center gap-2">
-                  <Image src={toplabLogo} alt="TOPLAB" width={28} height={28} className="h-auto w-7 rounded-md" />
-                  <span className="text-[10px] font-bold tracking-[0.2em] text-blue-800">TOPLAB</span>
+              <div className="patient-id-body absolute inset-x-0 bottom-0 top-[24%] z-10 grid grid-cols-[205px_minmax(0,1fr)_205px] items-center gap-4 px-5">
+                <div className="patient-id-photo relative flex aspect-square w-full max-w-[205px] items-center justify-center overflow-hidden rounded-xl border-[3px] border-white bg-slate-100 shadow-md ring-1 ring-slate-200">
+                  {photo ? <Image src={photo} alt={`${patient.name} ID`} width={205} height={205} unoptimized className="h-full w-full object-cover" />
+                    : <PatientAvatar patientId={patient.id} avatarFileId={patient.avatarFileId} name={patient.name} size="xl" className="h-full w-full rounded-xl" />}
                 </div>
-                <p className="break-words text-base font-bold leading-tight tracking-tight text-slate-900">{patient.name}</p>
-                <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-700">Patient ID</p>
-                <p className="mt-1 break-all font-mono text-[10px] tracking-wide text-slate-600">{patient.patientNumber}</p>
-                <p className="mt-3 text-[8px] leading-relaxed text-slate-400">Interclinic transfer credential</p>
-              </div>
-              <div className="patient-id-qr relative mx-auto aspect-square w-full max-w-[150px] rounded-xl bg-white p-2 ring-1 ring-slate-200">
-                <Image src={activeQrImage} alt={`Permanent interclinic QR for ${patient.name}`} width={320} height={320} unoptimized className="h-full w-full" />
+                <div className="patient-id-details min-w-0">
+                  <p className="break-words text-[22px] font-bold leading-tight tracking-tight text-slate-900">{patient.name}</p>
+                  <p className="mt-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-blue-700">Patient</p>
+                  <div className="mt-3 space-y-1.5">
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-400">ID Number</p>
+                      <p className="break-all font-mono text-[15px] font-medium tracking-wide text-slate-700">{patient.patientNumber}</p>
+                    </div>
+                    {qrQuery.data.createdAt && <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-400">Issued</p>
+                      <p className="text-[14px] font-medium text-slate-700">{new Date(qrQuery.data.createdAt).toLocaleDateString()}</p>
+                    </div>}
+                  </div>
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-blue-700">Valid until revoked</p>
+                </div>
+                <div className="patient-id-qr relative mx-auto aspect-square w-full max-w-[205px] rounded-xl bg-white">
+                  <Image src={activeQrImage} alt={`Permanent interclinic QR for ${patient.name}`} width={320} height={320} unoptimized className="h-full w-full" />
+                </div>
               </div>
             </div>
-          </div> : !qrQuery.data?.active && !qrQuery.isLoading ? <p className="text-xs text-slate-500">No active QR is issued for this patient.</p> : null}
+          </div> : qrQuery.data?.active ? <p role={currentQrRenderError ? 'alert' : 'status'} className={`flex items-center gap-2 text-xs ${currentQrRenderError ? 'text-red-600' : 'text-slate-500'}`}>
+            {!currentQrRenderError && <LoaderCircle className="h-4 w-4 animate-spin" />}
+            {currentQrRenderError ?? (qrPayload ? 'Preparing the patient QR image...' : 'The active QR credential did not include image data. Reload this tab or revoke and generate a new QR.')}
+          </p> : <p className="text-xs text-slate-500">No active QR is issued for this patient.</p>}
     </section>
   );
 }

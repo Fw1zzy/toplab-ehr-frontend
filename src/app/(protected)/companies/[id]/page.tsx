@@ -3,11 +3,14 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Building2, MapPin, ClipboardList, Info } from 'lucide-react';
+import { ArrowLeft, Building2, MapPin, ClipboardList, Info, Pencil } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { cn, formatDate } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { AddCompanyForm } from '@/components/corporate/AddCompanyForm';
+import { useUpdateCompany } from '@/lib/queries/useCompanies';
+import { Company } from '@/types/corporate';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: Info },
@@ -18,6 +21,8 @@ export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const { mutateAsync: updateCompany } = useUpdateCompany();
 
   const { data: company, isLoading } = useQuery({
     queryKey: ['companies', id], queryFn: () => api.companies.getOne(id), enabled: !!id,
@@ -46,6 +51,11 @@ export default function CompanyDetailPage() {
     );
   }
 
+  const companyId = company.id;
+  async function saveCompany(data: Omit<Company, 'id'>) {
+    await updateCompany({ id: companyId, data });
+  }
+
   return (
     <div className="space-y-5">
       {/* Header Actions */}
@@ -57,6 +67,9 @@ export default function CompanyDetailPage() {
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Companies
+        </button>
+        <button type="button" onClick={() => setIsEditOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50">
+          <Pencil className="h-3.5 w-3.5" />Edit Company
         </button>
       </div>
 
@@ -168,6 +181,13 @@ export default function CompanyDetailPage() {
           )}
         </div>
       </div>
+
+      <AddCompanyForm
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        onAddCompany={saveCompany}
+        company={company}
+      />
     </div>
   );
 }

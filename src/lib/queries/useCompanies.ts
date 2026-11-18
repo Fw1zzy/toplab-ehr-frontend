@@ -5,6 +5,7 @@ import { Company } from '@/types/corporate';
 export const companyKeys = {
   all: ['companies'] as const,
   lists: () => [...companyKeys.all, 'list'] as const,
+  detail: (id: string) => [...companyKeys.all, id] as const,
 };
 
 export function useCompanies() {
@@ -20,6 +21,17 @@ export function useCreateCompany() {
   return useMutation({
     mutationFn: (data: Partial<Company>) => api.companies.create(data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: companyKeys.lists() });
+    },
+  });
+}
+
+export function useUpdateCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Company> }) => api.companies.update(id, data),
+    onSuccess: (company) => {
+      queryClient.setQueryData(companyKeys.detail(company.id), company);
       queryClient.invalidateQueries({ queryKey: companyKeys.lists() });
     },
   });
