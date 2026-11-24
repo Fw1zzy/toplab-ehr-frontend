@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertNotPatientRole, bearerToken, cmsRequest, getRequestContext, InterclinicError } from '@/lib/interclinicServer';
+import { assertNotPatientRole, bearerToken, cmsRequest, getRequestContext, hasActiveInterclinicShare, InterclinicError } from '@/lib/interclinicServer';
 
 export const runtime = 'nodejs';
 
@@ -14,13 +14,20 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     await assertNotPatientRole(serviceToken, context.user.id);
     const { patientId } = await params;
     if (!/^[0-9a-f-]{36}$/i.test(patientId)) throw new InterclinicError('Select a valid patient record.', 400);
-    const patient = await cmsRequest<Record<string, unknown> & { custodian_branch: string | { id: string } | null }>(
+    const patient = await cmsRequest<Record<string, unknown> & {
+      global_patient_id: string | null;
+      custodian_branch: string | { id: string } | null;
+    }>(
       serviceToken, `/items/patient/${encodeURIComponent(patientId)}?fields=*,user.avatar`,
     );
     const custodian = typeof patient.custodian_branch === 'string'
       ? patient.custodian_branch : patient.custodian_branch?.id;
-    if (custodian !== context.branch.id) throw new InterclinicError('You can only view a patient record owned by your branch.', 403);
-    return NextResponse.json({ data: patient }, { headers: { 'Cache-Control': 'no-store' } });
+    const isCustodian = custodian === context.branch.id;
+    const hasShare = !isCustodian && patient.global_patient_id
+      ? await hasActiveInterclinicShare(serviceToken, patient.global_patient_id, context.branch.id, 'patient')
+      : false;
+    if (!isCustodian && !hasShare) throw new InterclinicError('There is no active patient-sharing authorization for your branch.', 403);
+    return NextResponse.json({ data: patient, interclinic_access: !isCustodian }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {
     const error = cause instanceof InterclinicError ? cause : new InterclinicError('Unable to load patient details.', 500);
     return NextResponse.json({ error: error.message }, { status: error.status, headers: { 'Cache-Control': 'no-store' } });

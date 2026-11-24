@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertNotPatientRole, bearerToken, cmsRequest, getRequestContext, InterclinicError } from '@/lib/interclinicServer';
+import { assertNotPatientRole, bearerToken, cmsRequest, getRequestContext, hasActiveInterclinicShare, InterclinicError } from '@/lib/interclinicServer';
 
 export const runtime = 'nodejs';
 const cmsBaseUrl = (process.env.LIKHA_CMS_URL || 'https://ehr.zyberlab.com').replace(/\/$/, '');
@@ -20,11 +20,20 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     userQuery.set('filter[avatar][_eq]', fileId);
     const users = await cmsRequest<Array<{ id: string }>>(serviceToken, `/users?${userQuery}`);
     const patientChecks = await Promise.all(users.map(async (user) => {
-      const patientQuery = new URLSearchParams({ limit: '1', fields: 'id' });
+      const patientQuery = new URLSearchParams({ limit: '5', fields: 'id,global_patient_id,custodian_branch' });
       patientQuery.set('filter[user][_eq]', user.id);
-      patientQuery.set('filter[custodian_branch][_eq]', context.branch.id);
-      const patients = await cmsRequest<Array<{ id: string }>>(serviceToken, `/items/patient?${patientQuery}`);
-      return patients.length > 0;
+      const patients = await cmsRequest<Array<{
+        id: string;
+        global_patient_id: string | null;
+        custodian_branch: string | { id: string } | null;
+      }>>(serviceToken, `/items/patient?${patientQuery}`);
+      const accessChecks = await Promise.all(patients.map(async (patient) => {
+        const custodianId = typeof patient.custodian_branch === 'string' ? patient.custodian_branch : patient.custodian_branch?.id;
+        if (custodianId === context.branch.id) return true;
+        if (!patient.global_patient_id) return false;
+        return hasActiveInterclinicShare(serviceToken, patient.global_patient_id, context.branch.id, 'patient');
+      }));
+      return accessChecks.some(Boolean);
     }));
     if (!patientChecks.some(Boolean)) throw new InterclinicError('This avatar is not attached to a patient owned by your branch.', 403);
 

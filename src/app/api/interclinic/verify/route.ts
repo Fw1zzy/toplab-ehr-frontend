@@ -3,7 +3,7 @@ import {
   assertSameOrigin,
   bearerToken,
   cmsRequest,
-  completeCustodyTransfer,
+  completeInterclinicShare,
   getRequestContext,
   InterclinicError,
   verifyOtpHash,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     if (relationId(consent.destination_branch) !== context.branch.id || relationId(consent.requested_by) !== context.user.id) {
       throw new InterclinicError('This authorization request belongs to another branch or staff account.', 403);
     }
-    if (consent.effect !== 'custody_transfer') throw new InterclinicError('This request is not a custody transfer.', 409);
+    if (consent.effect !== 'view_only') throw new InterclinicError('This request is not a view-only patient share.', 409);
 
     const now = new Date();
     const expiresAt = consent.otp_expires_at ? new Date(consent.otp_expires_at) : null;
@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
       throw new InterclinicError(locked ? 'Too many incorrect codes. Start a new access request.' : 'The authorization code is incorrect.', locked ? 429 : 400);
     }
 
-    await completeCustodyTransfer(token, context, consent, now.toISOString(), 'email_otp');
-    return NextResponse.json({ data: { status: 'transferred', custodianBranchId: context.branch.id } }, { headers: { 'Cache-Control': 'no-store' } });
+    const share = await completeInterclinicShare(token, context, consent, now.toISOString(), 'email_otp');
+    return NextResponse.json({ data: { status: 'approved', accessExpiresAt: null, custodianBranchId: share.sourceBranchId } }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {
     const error = cause instanceof InterclinicError ? cause : new InterclinicError('Unable to verify patient authorization.', 500);
     return NextResponse.json({ error: error.message }, { status: error.status, headers: { 'Cache-Control': 'no-store' } });

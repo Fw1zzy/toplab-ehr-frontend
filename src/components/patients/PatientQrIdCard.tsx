@@ -103,7 +103,7 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Patient QR ID</h2>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Generate a reusable interclinic transfer credential and print it as a standard CR80 ID card (85.6 x 53.98 mm). It has no time expiry and remains usable until revoked.</p>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Generate a reusable credential for interclinic patient-profile sharing and print it as a standard CR80 ID card (85.6 x 53.98 mm). Profile access remains active until you revoke it. The QR itself also remains usable until revoked.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {!qrQuery.data?.active && <button type="button" onClick={() => issueMutation.mutate()} disabled={busy || qrQuery.isLoading} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
@@ -129,7 +129,7 @@ export function PatientQrIdCard({ patient }: PatientQrIdCardProps) {
               </label>
               <p className="text-[11px] text-slate-500">Photo stays in this browser session for printing only. It is not uploaded to the server or saved to the EHR.</p>
               {photoError && <p role="alert" className="text-xs text-red-600">{photoError}</p>}
-              <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-none" />Anyone holding a clear copy can authorize a patient transfer to their branch. Keep the ID secure and revoke this QR immediately if it is lost.</p>
+              <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-none" />Anyone holding a clear copy can authorize patient-profile sharing with edit access. Access remains active until you revoke it. Keep the ID secure and revoke this QR if it is lost.</p>
               {qrQuery.data.createdAt && <p className="text-[10px] text-slate-400">Generated {new Date(qrQuery.data.createdAt).toLocaleString()} · No expiration</p>}
             </div>
 

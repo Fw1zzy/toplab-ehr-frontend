@@ -83,9 +83,9 @@ export async function sendPatientOtp(email: string, branchName: string, code: st
   await transport.sendMail({
     from: process.env.SMTP_FROM,
     to: email,
-    subject: 'Patient-record transfer authorization code',
-    text: `A request was made to transfer custody of your EHR patient record to ${branchName}. Purpose: ${purpose}. If approved, the destination branch will become the record custodian and the previous branch will lose normal access. The patient's existing linked history remains in the EHR.\n\nYour one-time authorization code is ${code}. It expires in 10 minutes. If you did not request this transfer, ignore this email and contact your clinic. Do not share this code with anyone.`,
-    html: `<p>A request was made to transfer custody of your EHR patient record to <strong>${escapeHtml(branchName)}</strong>.</p><p>Purpose: ${escapeHtml(purpose)}</p><p>If approved, the destination branch becomes the record custodian and the previous branch loses normal access. Existing linked history remains in the EHR.</p><p>Your one-time authorization code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:6px">${code}</p><p>This code expires in 10 minutes. If you did not request this transfer, ignore this email and contact your clinic. Do not share this code with anyone.</p>`,
+    subject: 'Patient-record sharing authorization code',
+    text: `A request was made to share your EHR patient profile with ${branchName} for: ${purpose}. If approved, your profile stays with its current home branch and authorized staff at both branches can view and update your patient profile until you revoke access. Other clinical records continue to follow their own permissions.\n\nYour one-time authorization code is ${code}. It expires in 10 minutes. If you did not request this sharing, ignore this email and contact your clinic. Do not share this code with anyone.`,
+    html: `<p>A request was made to share your EHR patient profile with <strong>${escapeHtml(branchName)}</strong>.</p><p>Purpose: ${escapeHtml(purpose)}</p><p>If approved, your profile stays with its current home branch and authorized staff at both branches can view and update your patient profile until you revoke access. Other clinical records continue to follow their own permissions.</p><p>Your one-time authorization code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:6px">${code}</p><p>This code expires in 10 minutes. If you did not request this sharing, ignore this email and contact your clinic. Do not share this code with anyone.</p>`,
   });
 }
 
@@ -158,18 +158,18 @@ export function decryptPatientQrToken(value: string) {
   }
 }
 
-export async function completeCustodyTransfer(
+export async function completeInterclinicShare(
   token: string,
   context: Awaited<ReturnType<typeof getRequestContext>>,
-  consent: { id: string; global_patient_id: string; local_patient: string | { id: string }; source_branch: string | { id: string }; destination_branch: string | { id: string } },
-  transferredAt: string,
+  consent: { id: string; global_patient_id: string; local_patient: string | { id: string }; source_branch: string | { id: string }; destination_branch: string | { id: string }; scope?: string[] | null },
+  approvedAt: string,
   verificationMethod: 'email_otp' | 'patient_qr',
 ) {
   const patientId = typeof consent.local_patient === 'string' ? consent.local_patient : consent.local_patient.id;
   const sourceBranchId = typeof consent.source_branch === 'string' ? consent.source_branch : consent.source_branch.id;
   const destinationBranchId = typeof consent.destination_branch === 'string' ? consent.destination_branch : consent.destination_branch.id;
   if (destinationBranchId !== context.branch.id || sourceBranchId === destinationBranchId) {
-    throw new InterclinicError('This transfer does not match the current destination branch.', 403);
+    throw new InterclinicError('This access grant does not match the current destination branch.', 403);
   }
 
   const patient = await cmsRequest<{
@@ -177,68 +177,54 @@ export async function completeCustodyTransfer(
     global_patient_id: string | null;
     custodian_branch: string | { id: string } | null;
   }>(token, `/items/patient/${encodeURIComponent(patientId)}?fields=id,global_patient_id,custodian_branch`);
-  if (patient.global_patient_id !== consent.global_patient_id) throw new InterclinicError('The patient identity no longer matches this transfer request.', 409);
+  if (patient.global_patient_id !== consent.global_patient_id) throw new InterclinicError('The patient identity no longer matches this access request.', 409);
   const currentCustodianId = patient.custodian_branch
     ? typeof patient.custodian_branch === 'string' ? patient.custodian_branch : patient.custodian_branch.id
     : null;
-  if (currentCustodianId !== sourceBranchId && currentCustodianId !== destinationBranchId) {
-    throw new InterclinicError('The patient’s custody changed after this transfer was requested. Start a new transfer from the current branch.', 409);
+  if (currentCustodianId !== sourceBranchId) {
+    throw new InterclinicError('The patient’s custodian changed after this access request was started. Request access again from the current custodian.', 409);
   }
 
-  if (currentCustodianId !== destinationBranchId) {
-    await cmsRequest(token, `/items/patient/${encodeURIComponent(patientId)}`, 'PATCH', {
-      custodian_branch: destinationBranchId,
-      custody_state: 'active',
-    });
-  }
-
-  const grantsQuery = new URLSearchParams({ limit: '100', fields: 'id,destination_branch' });
-  grantsQuery.set('filter[global_patient_id][_eq]', consent.global_patient_id);
-  grantsQuery.set('filter[effect][_eq]', 'view_only');
-  grantsQuery.set('filter[status][_eq]', 'approved');
-  const previousGrants = await cmsRequest<Array<{ id: string; destination_branch: string | { id: string } }>>(
-    token, `/items/interclinic_consent?${grantsQuery}`,
-  );
-  for (const grant of previousGrants) {
-    await cmsRequest(token, `/items/interclinic_consent/${encodeURIComponent(grant.id)}`, 'PATCH', {
-      status: 'revoked', access_expires_at: transferredAt, otp_hash: null, otp_expires_at: null,
-    });
-    await writeInterclinicAudit(token, {
-      event_type: 'revocation', global_patient_id: consent.global_patient_id,
-      patient: patientId, consent: grant.id, actor_user: context.user.id,
-      branch: destinationBranchId,
-      details: {
-        reason: 'patient_custody_transferred',
-        previous_destination_branch: typeof grant.destination_branch === 'string' ? grant.destination_branch : grant.destination_branch.id,
-      },
-    });
-  }
-
-  for (const eventType of ['transfer', 'approval']) {
-    const eventQuery = new URLSearchParams({ limit: '1', fields: 'id' });
-    eventQuery.set('filter[consent][_eq]', consent.id);
-    eventQuery.set('filter[event_type][_eq]', eventType);
-    const existing = await cmsRequest<Array<{ id: string }>>(token, `/items/interclinic_access_audit?${eventQuery}`);
-    if (existing.length) continue;
-    await writeInterclinicAudit(token, {
-      event_type: eventType, global_patient_id: consent.global_patient_id,
-      patient: patientId, consent: consent.id, actor_user: context.user.id,
-      branch: destinationBranchId,
-      details: {
-        effect: 'custody_transfer', source_branch: sourceBranchId,
-        destination_branch: destinationBranchId,
-        scope: ['patient', 'encounter', 'laboratory', 'invoice'],
-        verification_method: verificationMethod,
-      },
-    });
-  }
+  const approvalQuery = new URLSearchParams({ limit: '1', fields: 'id' });
+  approvalQuery.set('filter[consent][_eq]', consent.id);
+  approvalQuery.set('filter[event_type][_eq]', 'approval');
+  const existingApproval = await cmsRequest<Array<{ id: string }>>(token, `/items/interclinic_access_audit?${approvalQuery}`);
+  if (!existingApproval.length) await writeInterclinicAudit(token, {
+    event_type: 'approval', global_patient_id: consent.global_patient_id,
+    patient: patientId, consent: consent.id, actor_user: context.user.id,
+    branch: destinationBranchId,
+    details: {
+      action: 'share_granted', effect: 'view_only', source_branch: sourceBranchId,
+      destination_branch: destinationBranchId,
+      scope: consent.scope ?? ['patient', 'encounter', 'laboratory', 'invoice'],
+      verification_method: verificationMethod,
+    },
+  });
 
   await cmsRequest(token, `/items/interclinic_consent/${encodeURIComponent(consent.id)}`, 'PATCH', {
-    status: 'approved', effect: 'custody_transfer',
-    scope: ['patient', 'encounter', 'laboratory', 'invoice'],
-    verified_at: transferredAt, approved_at: transferredAt,
-    access_expires_at: null, otp_hash: null, otp_expires_at: null,
+    status: 'approved', effect: 'view_only',
+    verified_at: approvedAt, approved_at: approvedAt,
+    access_expires_at: null,
+    otp_hash: null, otp_expires_at: null,
   });
 
   return { patientId, sourceBranchId, destinationBranchId };
+}
+
+export async function hasActiveInterclinicShare(
+  token: string,
+  globalPatientId: string,
+  branchId: string,
+  requiredScope: string,
+) {
+  const query = new URLSearchParams({ limit: '100', fields: 'scope,access_expires_at' });
+  query.set('filter[global_patient_id][_eq]', globalPatientId);
+  query.set('filter[destination_branch][_eq]', branchId);
+  query.set('filter[effect][_eq]', 'view_only');
+  query.set('filter[status][_eq]', 'approved');
+  const grants = await cmsRequest<Array<{ scope: string[] | null; access_expires_at: string | null }>>(token, `/items/interclinic_consent?${query}`);
+  return grants.some((grant) => {
+    const unexpired = !grant.access_expires_at || new Date(grant.access_expires_at).getTime() > Date.now();
+    return unexpired && Array.isArray(grant.scope) && grant.scope.includes(requiredScope);
+  });
 }

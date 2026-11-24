@@ -1,24 +1,26 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { Avatar } from '@/components/ui/Avatar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { MyInterclinicShares } from '@/components/patients/MyInterclinicShares';
+import { CurrentUser } from '@/types';
 
 export default function ProfilePage() {
   const { user, updateProfile } = useAuth();
-  const [firstName, setFirstName] = useState(user?.first_name ?? '');
-  const [lastName, setLastName] = useState(user?.last_name ?? '');
+  if (!user) return <p className="p-8 text-center text-sm text-slate-500">Loading profile...</p>;
+  return <ProfileContent key={`${user.id}-${user.first_name}-${user.last_name}`} user={user} updateProfile={updateProfile} />;
+}
+
+function ProfileContent({ user, updateProfile }: { user: CurrentUser; updateProfile: (profile: Pick<CurrentUser, 'first_name' | 'last_name'>) => Promise<void> }) {
+  const [firstName, setFirstName] = useState(user.first_name ?? '');
+  const [lastName, setLastName] = useState(user.last_name ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setFirstName(user?.first_name ?? '');
-    setLastName(user?.last_name ?? '');
-  }, [user?.id, user?.first_name, user?.last_name]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,14 +36,13 @@ export default function ProfilePage() {
     }
   }
 
-  if (!user) return <p className="p-8 text-center text-sm text-slate-500">Loading profile...</p>;
-
   const displayName = `${user.first_name} ${user.last_name}`.trim() || user.email.split('@')[0];
   const roleLabel = String(user.roleName).replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   return (
     <div className="space-y-5">
       <PageHeader title="Profile" description="Personal account information from the EHR." />
+      {String(user.roleName).trim().toLowerCase() === 'patient' && <MyInterclinicShares />}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center gap-4 border-b border-slate-100 px-5 py-5">

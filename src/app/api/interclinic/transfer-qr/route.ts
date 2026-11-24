@@ -3,7 +3,7 @@ import {
   assertSameOrigin,
   bearerToken,
   cmsRequest,
-  completeCustodyTransfer,
+  completeInterclinicShare,
   getRequestContext,
   hashPatientQrToken,
   InterclinicError,
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     const qrQuery = new URLSearchParams({ limit: '500', fields: 'id,details' });
     qrQuery.set('filter[global_patient_id][_eq]', patient.global_patient_id);
-    qrQuery.set('filter[event_type][_eq]', 'qr_credential');
+    qrQuery.set('filter[event_type][_in]', 'request,revoked,qr_credential');
     const qrEvents = await cmsRequest<QrAuditEvent[]>(token, `/items/interclinic_access_audit?${qrQuery}`);
     const credentialId = match[2];
     const issue = qrEvents
@@ -92,10 +92,10 @@ export async function POST(request: NextRequest) {
       destination_branch: context.branch.id,
       requested_by: context.user.id,
       purpose,
-      effect: 'custody_transfer',
+      effect: 'view_only',
       scope: ['patient', 'encounter', 'laboratory', 'invoice'],
-      consent_version: 'interclinic-transfer-qr-v1',
-      verification_method: 'patient_qr',
+      consent_version: 'interclinic-share-qr-v1',
+      verification_method: null,
       otp_hash: null,
       otp_expires_at: null,
       otp_attempt_count: 0,
@@ -106,22 +106,23 @@ export async function POST(request: NextRequest) {
       event_type: 'request', global_patient_id: patient.global_patient_id,
       patient: patient.id, consent: consent.id, actor_user: context.user.id,
       branch: context.branch.id,
-      details: { effect: 'custody_transfer', verification_method: 'patient_qr', qr_credential_id: credentialId },
+      details: { effect: 'view_only', verification_method: 'patient_qr', qr_credential_id: credentialId },
     });
-    await completeCustodyTransfer(token, context, {
+    await completeInterclinicShare(token, context, {
       ...consent,
       global_patient_id: patient.global_patient_id,
       local_patient: patient.id,
       source_branch: sourceBranchId,
       destination_branch: context.branch.id,
+      scope: ['patient', 'encounter', 'laboratory', 'invoice'],
     }, now, 'patient_qr');
 
-    return NextResponse.json({ data: { status: 'transferred', custodianBranchId: context.branch.id } }, {
+    return NextResponse.json({ data: { status: 'approved', custodianBranchId: sourceBranchId } }, {
       status: 201,
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (cause) {
-    const error = cause instanceof InterclinicError ? cause : new InterclinicError('Unable to transfer patient using this QR.', 500);
+    const error = cause instanceof InterclinicError ? cause : new InterclinicError('Unable to share patient access using this QR.', 500);
     return NextResponse.json({ error: error.message }, { status: error.status, headers: { 'Cache-Control': 'no-store' } });
   }
 }

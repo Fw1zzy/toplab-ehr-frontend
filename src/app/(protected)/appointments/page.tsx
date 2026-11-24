@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, isToday, startOfDay, startOfMonth, startOfWeek, subMonths } from 'date-fns';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -20,11 +21,12 @@ function patientLabel(patient: Encounter['patient_id'], names: Map<string, strin
 }
 
 export default function AppointmentsPage() {
+  const router = useRouter();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const { data, isLoading, error } = useEncounters({ page: 1, limit: 100 });
   const patientsQuery = usePatients({ limit: 100 });
-  const encounters = data?.data ?? [];
+  const encounters = data?.data;
   const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [
     patient.id,
     `${patient.first_name} ${patient.last_name}`.trim(),
@@ -37,7 +39,7 @@ export default function AppointmentsPage() {
 
   const visitsByDay = useMemo(() => {
     const grouped = new Map<string, Encounter[]>();
-    for (const encounter of encounters) {
+    for (const encounter of encounters ?? []) {
       const date = new Date(encounter.encounter_date);
       if (!Number.isNaN(date.getTime())) {
         const key = format(date, 'yyyy-MM-dd');
@@ -141,18 +143,25 @@ export default function AppointmentsPage() {
           ) : (
             <ul className="divide-y divide-slate-100">
               {selectedVisits.map((encounter) => (
-                <li key={encounter.id} className="space-y-2.5 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{patientLabel(encounter.patient_id, patientNames, patientsQuery.isLoading)}</p>
-                      <p className="mt-1 truncate text-xs text-slate-500">{encounter.encounter_type ?? 'Encounter'}{encounter.service ? ` · ${encounter.service}` : ''}</p>
+                <li key={encounter.id} className="px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/encounters/${encounter.id}`)}
+                    aria-label={`View encounter for ${patientLabel(encounter.patient_id, patientNames, patientsQuery.isLoading)}`}
+                    className="w-full space-y-2.5 rounded-xl border border-transparent p-3 text-left transition-colors hover:border-blue-100 hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{patientLabel(encounter.patient_id, patientNames, patientsQuery.isLoading)}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500">{encounter.encounter_type ?? 'Encounter'}{encounter.service ? ` · ${encounter.service}` : ''}</p>
+                      </div>
+                      <StatusBadge status={encounter.status} />
                     </div>
-                    <StatusBadge status={encounter.status} />
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    {formatDate(encounter.encounter_date, 'h:mm a')}
-                  </div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {formatDate(encounter.encounter_date, 'h:mm a')}
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>

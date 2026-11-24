@@ -15,7 +15,7 @@ import {
 
 export const runtime = 'nodejs';
 
-const transferScope = ['patient', 'encounter', 'laboratory', 'invoice'];
+const shareScope = ['patient', 'encounter', 'laboratory', 'invoice'];
 
 export async function POST(request: NextRequest) {
   let token = '';
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       origin_branch: string | { id: string } | null;
     }>(token, `/items/patient/${encodeURIComponent(patientId)}?fields=id,first_name,last_name,email,global_patient_id,custodian_branch,origin_branch`);
     const sourceBranchId = typeof patient.custodian_branch === 'string' ? patient.custodian_branch : patient.custodian_branch?.id;
-    if (!sourceBranchId) throw new InterclinicError('This patient has no current custodian branch. An EHR administrator must resolve custody before transfer.', 409);
+    if (!sourceBranchId) throw new InterclinicError('This patient has no current custodian branch. An EHR administrator must resolve custody before sharing.', 409);
     if (sourceBranchId === context.branch.id) throw new InterclinicError('This patient is already under your branch\'s custody.', 409);
     if (!patient.global_patient_id) throw new InterclinicError('This patient has no global patient ID. An EHR administrator must complete patient identity mapping first.', 409);
     if (!patient.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patient.email)) throw new InterclinicError('The patient has no valid email address on their EHR record.', 409);
@@ -76,9 +76,9 @@ export async function POST(request: NextRequest) {
       destination_branch: context.branch.id,
       requested_by: context.user.id,
       purpose,
-      effect: 'custody_transfer',
-      scope: transferScope,
-      consent_version: 'interclinic-transfer-v1',
+      effect: 'view_only',
+      scope: shareScope,
+      consent_version: 'interclinic-share-until-revoked-v2',
       verification_method: 'email_otp',
       otp_hash: null,
       otp_expires_at: expiresAt,
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     await writeInterclinicAudit(token, {
       event_type: 'request', global_patient_id: patient.global_patient_id,
       patient: patient.id, consent: consent.id, actor_user: context.user.id,
-      branch: context.branch.id, details: { scope: transferScope, effect: 'custody_transfer', verification_method: 'email_otp' },
+      branch: context.branch.id, details: { scope: shareScope, effect: 'view_only', verification_method: 'email_otp' },
     });
     await sendPatientOtp(patient.email, context.branch.name, code, purpose);
 

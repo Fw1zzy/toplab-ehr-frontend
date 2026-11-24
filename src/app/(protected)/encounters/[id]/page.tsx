@@ -10,18 +10,27 @@ import { formatDateTime, formatCurrency } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ClipboardList } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ClipboardList } from 'lucide-react';
+import { useState } from 'react';
 
 export default function EncounterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [invoiceGenerated, setInvoiceGenerated] = useState(false);
   const { data: encounter, isLoading } = useEncounter(id);
   const patientsQuery = usePatients({ limit: 100 });
   const companiesQuery = useCompanies();
   const requestsQuery = useQuery({
     queryKey: ['corporate-requests', 'encounter-labels'],
     queryFn: () => api.corporateRequests.getAll({ page: 1, limit: 100 }),
+  });
+  const isCorporate = encounter?.encounter_type?.startsWith('PEME') || encounter?.encounter_type?.startsWith('APE') || false;
+  const outpatientInvoiceQuery = useQuery({
+    queryKey: ['outpatient-invoice-for-encounter', id],
+    queryFn: () => api.invoices.hasOutpatientInvoiceForEncounter(id),
+    enabled: !!encounter && !isCorporate,
+    staleTime: 30_000,
   });
   const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
   const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
@@ -32,9 +41,11 @@ export default function EncounterDetailPage() {
       if (!encounter) throw new Error('No encounter data');
       return api.invoices.generateForEncounter(encounter);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (isCorporate) router.push('/billing/invoices');
+      else setInvoiceGenerated(true);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      router.push('/billing/invoices');
+      await queryClient.invalidateQueries({ queryKey: ['outpatient-invoice-for-encounter', id] });
     }
   });
 
@@ -54,11 +65,13 @@ export default function EncounterDetailPage() {
     ? requestNames.get(encounter.corporate_request) ?? 'Corporate request'
     : '—';
 
-  const isCorporate = encounter.encounter_type?.startsWith('PEME') || encounter.encounter_type?.startsWith('APE');
   const selectedServices = encounter.services_selected || [];
   const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const outpatientInvoiceExists = invoiceGenerated || outpatientInvoiceQuery.data === true;
 
   const handleGenerateInvoice = () => {
+    if (!isCorporate && selectedServices.length === 0) return;
+    if (!isCorporate && outpatientInvoiceExists) return;
     createInvoiceMutation.mutate();
   };
 
@@ -138,8 +151,12 @@ export default function EncounterDetailPage() {
                 </div>
               </div>
             ) : (
-              <div className="p-8 text-center text-slate-500 text-sm">
-                No services selected for this encounter.
+              <div role="alert" className="m-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-amber-600" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">No services selected</p>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-800">This encounter has no selected services.{!isCorporate && ' An outpatient invoice cannot be generated until at least one service is selected.'}</p>
+                </div>
               </div>
             )}
           </div>
@@ -150,15 +167,22 @@ export default function EncounterDetailPage() {
               <input type="text" readOnly value={formatDateTime(encounter.encounter_date)} className="w-full border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 bg-emerald-50/30 outline-none" />
             </div>
             <div>
-              <button 
-                type="button" 
-                onClick={handleGenerateInvoice}
-                disabled={createInvoiceMutation.isPending}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm text-sm disabled:opacity-50"
-              >
-                <Receipt className="h-4 w-4" /> 
-                {createInvoiceMutation.isPending ? 'Generating...' : `Generate ${isCorporate ? 'Corporate' : 'Outpatient'} Invoice`}
-              </button>
+              {!isCorporate && outpatientInvoiceExists ? (
+                <p role="status" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 flex-none" />An outpatient invoice has already been generated for this encounter.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGenerateInvoice}
+                  disabled={createInvoiceMutation.isPending || (!isCorporate && (selectedServices.length === 0 || outpatientInvoiceQuery.isLoading))}
+                  className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Receipt className="h-4 w-4" />
+                  {createInvoiceMutation.isPending ? 'Generating...' : !isCorporate && outpatientInvoiceQuery.isLoading ? 'Checking invoice...' : `Generate ${isCorporate ? 'Corporate' : 'Outpatient'} Invoice`}
+                </button>
+              )}
+              {createInvoiceMutation.error && <p role="alert" className="mt-3 text-xs text-red-600">{createInvoiceMutation.error instanceof Error ? createInvoiceMutation.error.message : 'Unable to generate invoice.'}</p>}
             </div>
           </div>
       </div>

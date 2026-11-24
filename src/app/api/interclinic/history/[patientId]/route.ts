@@ -4,6 +4,7 @@ import {
   bearerToken,
   cmsRequest,
   getRequestContext,
+  hasActiveInterclinicShare,
   InterclinicError,
 } from '@/lib/interclinicServer';
 
@@ -63,6 +64,12 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     if (!patient.global_patient_id) throw new InterclinicError('This patient has no global patient ID.', 404);
 
     const isCustodian = relationId(patient.custodian_branch) === context.branch.id;
+    const hasActiveShare = !isCustodian
+      ? await hasActiveInterclinicShare(token, patient.global_patient_id, context.branch.id, 'patient')
+      : false;
+    if (!isCustodian && !hasActiveShare) {
+      throw new InterclinicError('There is no active patient-sharing authorization for your branch.', 403);
+    }
     const query = new URLSearchParams({
       limit: '100',
       fields: 'id,status,effect,purpose,scope,source_branch.id,source_branch.code,source_branch.name,destination_branch.id,destination_branch.code,destination_branch.name,approved_at,access_expires_at',
@@ -71,7 +78,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     const allTransactions = await cmsRequest<ConsentRecord[]>(token, `/items/interclinic_consent?${query}`);
     const transactions = isCustodian ? allTransactions : allTransactions.filter((entry) =>
-      relationId(entry.source_branch) === context.branch.id || relationId(entry.destination_branch) === context.branch.id,
+      relationId(entry.destination_branch) === context.branch.id && entry.effect === 'view_only',
     );
     if (!isCustodian && transactions.length === 0) {
       throw new InterclinicError('You are not authorized to view this patient’s interclinic history.', 403);
@@ -86,14 +93,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const allEvents = await cmsRequest<AuditRecord[]>(token, `/items/interclinic_access_audit?${auditQuery}`);
     const transactionIds = new Set(transactions.map((entry) => entry.id));
     const events = isCustodian ? allEvents : allEvents.filter((entry) =>
-      (relationId(entry.consent) && transactionIds.has(relationId(entry.consent)!)) || relationId(entry.branch) === context.branch.id,
+      relationId(entry.consent) && transactionIds.has(relationId(entry.consent)!),
     );
 
     return NextResponse.json({
       data: {
         transactions: transactions.map((entry) => ({
           id: entry.id,
-          status: entry.status,
+          status: entry.status === 'approved' && entry.access_expires_at && new Date(entry.access_expires_at).getTime() <= Date.now()
+            ? 'expired' : entry.status,
           effect: entry.effect,
           purpose: entry.purpose,
           scope: entry.scope ?? [],

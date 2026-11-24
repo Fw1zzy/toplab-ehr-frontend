@@ -91,7 +91,7 @@ export default function PatientsPage() {
       <div className="flex w-fit max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
         {([
           ['branch', 'My Branch Patients'],
-          ['other', 'Other Branch Transfer'],
+          ['other', 'Other Branch Sharing'],
         ] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setPatientSection(key)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-xs font-medium transition-colors ${patientSection === key ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}
       </div>
 
@@ -216,12 +216,12 @@ export default function PatientsPage() {
         <div className="space-y-3 border-b border-slate-100 p-4">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Find a patient from another branch</h2>
-            <p className="mt-1 text-xs text-slate-500">Search returns patient names only. The full linked patient record moves to your branch after the patient authorizes the transfer.</p>
+            <p className="mt-1 text-xs text-slate-500">Search returns patient names only. With patient authorization, the home branch keeps custody and both branches can view and edit the patient profile.</p>
           </div>
           <SearchInput value={otherBranchSearch} onChange={setOtherBranchSearch} placeholder="Search by patient name..." className="w-full max-w-md" id="other-branch-patient-search" />
         </div>
         <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
-          Only patient names are shown in search. Verifying the patient&apos;s email code transfers custody of the existing record and its linked history; it does not make a duplicate.
+          Only patient names are shown in search. Approved sharing keeps custody at the home branch and lets your branch view and edit the patient profile until the patient revokes access.
         </div>
         {debouncedOtherBranchSearch.trim().length < 2 ? <div className="p-8 text-center text-xs text-slate-500">Enter at least two letters of the patient&apos;s name.</div> : otherBranchQuery.error ? (
           <p role="alert" className="p-8 text-center text-sm text-red-600">Unable to search other-branch patient names.</p>
@@ -231,7 +231,9 @@ export default function PatientsPage() {
           <div className="divide-y divide-slate-100">
             {(otherBranchQuery.data ?? []).map((patient) => <div key={patient.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
               <p className="text-sm font-medium text-slate-900">{patient.name}</p>
-              <button type="button" onClick={() => setSelectedOtherPatient({ id: patient.id, name: patient.name })} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Request Transfer</button>
+              {patient.hasAccess
+                ? <button type="button" onClick={() => router.push(`/patients/${patient.id}`)} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">View Shared Patient</button>
+                : <button type="button" onClick={() => setSelectedOtherPatient({ id: patient.id, name: patient.name })} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Request Access</button>}
             </div>)}
           </div>
         )}

@@ -39,7 +39,7 @@ function branchId(value: PatientRecord['custodian_branch']) {
 async function loadQrEvents(token: string, globalPatientId: string) {
   const query = new URLSearchParams({ limit: '500', fields: 'id,details' });
   query.set('filter[global_patient_id][_eq]', globalPatientId);
-  query.set('filter[event_type][_eq]', 'qr_credential');
+  query.set('filter[event_type][_in]', 'request,revoked,qr_credential');
   return cmsRequest<AuditEvent[]>(token, `/items/interclinic_access_audit?${query}`);
 }
 
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     if (action === 'revoke') {
       if (!current) return NextResponse.json({ data: { active: false } }, { headers: { 'Cache-Control': 'no-store' } });
       await writeInterclinicAudit(token, {
-        event_type: 'qr_credential', global_patient_id: patient.global_patient_id,
+        event_type: 'revoked', global_patient_id: patient.global_patient_id,
         patient: patient.id, actor_user: context.user.id, branch: context.branch.id,
         details: {
           action: 'revoked', credential_id: current.details.credential_id,
@@ -129,10 +129,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const qrPayload = `TOPLAB-QRP1:${patient.id}:${credentialId}:${secret}`;
     const issuedAt = new Date().toISOString();
     await writeInterclinicAudit(token, {
-      event_type: 'qr_credential', global_patient_id: patient.global_patient_id,
+      event_type: 'request', global_patient_id: patient.global_patient_id,
       patient: patient.id, actor_user: context.user.id, branch: context.branch.id,
       details: {
-        action: 'issued', credential_id: credentialId,
+        action: 'issued', credential_type: 'patient_qr', credential_id: credentialId,
         token_hash: hashPatientQrToken(qrPayload),
         encrypted_token: encryptPatientQrToken(qrPayload),
         issued_at: issuedAt,

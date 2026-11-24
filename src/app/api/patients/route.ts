@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { assertNotPatientRole, bearerToken, cmsRequest, getRequestContext, InterclinicError } from '@/lib/interclinicServer';
+import { assertNotPatientRole, bearerToken, cmsRequest, getRequestContext, hasActiveInterclinicShare, InterclinicError } from '@/lib/interclinicServer';
 
 export const runtime = 'nodejs';
 
@@ -148,9 +148,14 @@ export async function POST(request: NextRequest) {
       const patient = await cmsRequest<{
         id: string;
         user: string | { id: string } | null;
+        global_patient_id: string | null;
         custodian_branch: string | { id: string } | null;
-      }>(serviceToken, `/items/patient/${encodeURIComponent(patientId)}?fields=id,user,custodian_branch`);
-      if (relationId(patient.custodian_branch) !== context.branch.id) throw new InterclinicError('You can only update a patient owned by your branch.', 403);
+      }>(serviceToken, `/items/patient/${encodeURIComponent(patientId)}?fields=id,user,global_patient_id,custodian_branch`);
+      const isCustodian = relationId(patient.custodian_branch) === context.branch.id;
+      const hasProfileShare = !isCustodian && patient.global_patient_id
+        ? await hasActiveInterclinicShare(serviceToken, patient.global_patient_id, context.branch.id, 'patient')
+        : false;
+      if (!isCustodian && !hasProfileShare) throw new InterclinicError('You need active patient-sharing authorization to edit this patient profile.', 403);
       currentUserId = relationId(patient.user);
       if (currentUserId) {
         const linkedUser = await cmsRequest<UserRecord>(serviceToken, `/users/${encodeURIComponent(currentUserId)}?fields=id,email,first_name,last_name,role,avatar`);

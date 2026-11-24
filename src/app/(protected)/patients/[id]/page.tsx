@@ -39,7 +39,8 @@ function historyEventLabel(eventType: string) {
   switch (eventType) {
     case 'request': return 'Access requested';
     case 'approval': return 'Patient authorization verified';
-    case 'transfer': return 'Patient custody transferred';
+    case 'share': return 'Patient access shared';
+    case 'revoked': return 'Patient revoked branch access';
     case 'revocation': return 'Previous access revoked';
     case 'expired': return 'Authorization expired';
     case 'denial': return 'Authorization denied';
@@ -101,6 +102,7 @@ export default function PatientProfilePage() {
 
   const fullName = getPatientFullName(patient);
   const age = getPatientAge(patient.date_of_birth);
+  const visibleTabs = patient.interclinic_access ? TABS.filter((tab) => tab.id !== 'qr-id') : TABS;
 
   return (
     <div className="space-y-5">
@@ -120,7 +122,7 @@ export default function PatientProfilePage() {
           onClick={() => setIsEditFormOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
         >
-          Edit Patient
+          {patient.interclinic_access ? 'Edit Shared Patient Info' : 'Edit Patient'}
         </button>
       </div>
 
@@ -133,7 +135,7 @@ export default function PatientProfilePage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">{fullName}</h1>
                 <p className="text-sm text-slate-500 mt-0.5 font-mono">{patient.patient_id}</p>
-                {patient.origin_branch_id && patient.custodian_branch_id && patient.origin_branch_id !== patient.custodian_branch_id && <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700">Transferred to this branch</span>}
+                {patient.interclinic_access && <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Shared access</span>}
               </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-600">
@@ -165,7 +167,7 @@ export default function PatientProfilePage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="border-b border-slate-100 overflow-x-auto">
           <nav className="flex" aria-label="Patient profile tabs">
-            {TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
@@ -326,7 +328,7 @@ export default function PatientProfilePage() {
           {activeTab === 'history' && (
             <div className="space-y-5">
               <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-xs leading-relaxed text-blue-900">
-                This history records custody transfers and related authorization events. Existing patient, encounter, laboratory, and invoice records remain linked and follow the current custodian branch; no duplicate patient is created.
+                This history records patient-sharing authorizations and related access events. The original patient record stays with the home branch; authorized branches can view and edit patient information until the patient revokes access. Other linked clinical records remain governed by their own permissions.
               </div>
               {historyQuery.isLoading ? <TableSkeleton rows={3} cols={4} /> : historyQuery.error ? (
                 <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-700">
@@ -338,8 +340,9 @@ export default function PatientProfilePage() {
                 <div className="space-y-4">
                   {(historyQuery.data?.transactions ?? []).map((transaction) => {
                     const events = (historyQuery.data?.events ?? []).filter((event) => event.consentId === transaction.id);
-                    const statusLabel = transaction.effect === 'custody_transfer' && transaction.status === 'approved'
-                      ? 'Transferred' : transaction.status.replace(/_/g, ' ');
+                    const statusLabel = transaction.effect === 'view_only' && transaction.status === 'approved'
+                      ? 'Shared'
+                      : transaction.status.replace(/_/g, ' ');
                     return (
                       <article key={transaction.id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -373,7 +376,7 @@ export default function PatientProfilePage() {
             </div>
           )}
 
-          {activeTab === 'qr-id' && (
+          {activeTab === 'qr-id' && !patient.interclinic_access && (
             <PatientQrIdCard patient={{ id: patient.id, name: fullName, patientNumber: patient.patient_id, avatarFileId: patient.avatar_id }} />
           )}
 
@@ -381,9 +384,9 @@ export default function PatientProfilePage() {
       </div>
 
       <AddPatientForm
-        open={isEditFormOpen} 
-        onOpenChange={setIsEditFormOpen} 
-        patient={patient} 
+        open={isEditFormOpen}
+        onOpenChange={setIsEditFormOpen}
+        patient={patient}
       />
     </div>
   );

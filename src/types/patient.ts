@@ -23,6 +23,7 @@ export interface Patient {
   custody_state: 'active' | 'transferred_out' | null;
   user_id: string | null; // directus_users FK
   avatar_id?: string | null;
+  interclinic_access?: boolean;
 }
 
 export type PatientReference = Pick<Patient, 'id'> & Partial<Pick<Patient, 'first_name' | 'last_name'>>;

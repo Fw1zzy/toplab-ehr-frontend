@@ -24,6 +24,7 @@ interface CmsSchema {
   encounter_catalog_service: CmsRecord[];
   invoice: CmsRecord[];
   invoice_line_item: CmsRecord[];
+  service_request: CmsRecord[];
   company: CmsRecord[];
   corporate_request: CmsRecord[];
   employee: CmsRecord[];
@@ -153,19 +154,40 @@ async function getCurrentBranch() {
   return currentBranchPromise;
 }
 
-async function getAccessiblePatientIds() {
+async function getAccessiblePatientIds(scope: 'patient' | 'encounter' | 'laboratory' | 'invoice' = 'patient') {
   const branch = await getCurrentBranch();
-  const owned = await listAll('patient', {
+  const [owned, grants] = await Promise.all([listAll('patient', {
     fields: ['id'],
     filter: { custodian_branch: { _eq: String(branch.id) } },
-  });
-  return new Set((owned ?? []).map((row) => String(row.id)));
+  }), listAll('interclinic_consent', {
+    fields: ['local_patient', 'scope', 'access_expires_at'],
+    filter: {
+      destination_branch: { _eq: String(branch.id) },
+      effect: { _eq: 'view_only' },
+      status: { _eq: 'approved' },
+    },
+  })]);
+  const allowed = new Set((owned ?? []).map((row) => String(row.id)));
+  for (const row of grants ?? []) {
+    const grant = row as CmsRecord;
+    const scopes = value(grant, 'scope');
+    const patientId = relationId(grant.local_patient);
+    const expiresAt = text(grant, 'access_expires_at');
+    const unexpired = !expiresAt || new Date(expiresAt).getTime() > Date.now();
+    if (patientId && unexpired && Array.isArray(scopes) && scopes.includes(scope)) allowed.add(patientId);
+  }
+  return allowed;
 }
 
 async function isPatientCustodian(patientId: string) {
   const branch = await getCurrentBranch();
   const patient = await likha.request(readItem('patient', patientId, { fields: ['id', 'custodian_branch'] })) as CmsRecord;
   return relationId(patient.custodian_branch) === String(branch.id);
+}
+
+async function hasPatientScopeAccess(patientId: string, scope: 'patient' | 'encounter' | 'laboratory' | 'invoice') {
+  const accessibleIds = await getAccessiblePatientIds(scope);
+  return accessibleIds.has(patientId);
 }
 
 function mapPatient(row: CmsRecord): Patient {
@@ -390,13 +412,13 @@ async function postInterclinic(path: string, data: Record<string, unknown>) {
 }
 
 export const likhaInterclinic = {
-  requestTransfer(input: { patientId: string; purpose: string }) {
+  requestShare(input: { patientId: string; purpose: string }) {
     return postInterclinic('/api/interclinic/request', input);
   },
-  verifyTransfer(input: { consentId: string; code: string }) {
+  verifyShare(input: { consentId: string; code: string }) {
     return postInterclinic('/api/interclinic/verify', input);
   },
-  transferUsingQr(input: { patientId: string; purpose: string; qrPayload: string }) {
+  shareUsingQr(input: { patientId: string; purpose: string; qrPayload: string }) {
     return postInterclinic('/api/interclinic/transfer-qr', input);
   },
   async getPatientQr(patientId: string) {
@@ -468,8 +490,20 @@ async function savePatientRecord(data: Partial<Patient>, photo?: File, id?: stri
 export const likhaPatients = {
   async getAll(params?: { search?: string; page?: number; limit?: number }) {
     const branch = await getCurrentBranch();
-    const rows = await listAll('patient', { filter: { custodian_branch: { _eq: String(branch.id) } } });
-    const data = (rows ?? []).map((row) => mapPatient(row as CmsRecord)).filter((patient) =>
+    const [ownedRows, sharedIds] = await Promise.all([
+      listAll('patient', { filter: { custodian_branch: { _eq: String(branch.id) } } }),
+      getAccessiblePatientIds('patient'),
+    ]);
+    const owned = ownedRows ?? [];
+    const ownedIds = new Set(owned.map((row) => String(row.id)));
+    const missingSharedIds = [...sharedIds].filter((id) => !ownedIds.has(id));
+    const sharedRows = missingSharedIds.length
+      ? await listAll('patient', { filter: { id: { _in: missingSharedIds } } })
+      : [];
+    const data = [...owned, ...(sharedRows ?? [])].map((row) => {
+      const patient = mapPatient(row as CmsRecord);
+      return { ...patient, interclinic_access: !ownedIds.has(String(row.id)) };
+    }).filter((patient) =>
       !params?.search || `${patient.first_name} ${patient.last_name} ${patient.patient_id} ${patient.contact_number ?? ''}`.toLowerCase().includes(params.search.toLowerCase()),
     );
     return paginated(data, data.length, params?.page, params?.limit);
@@ -483,7 +517,7 @@ export const likhaPatients = {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) return null;
-      return mapPatient(result.data as CmsRecord);
+      return { ...mapPatient(result.data as CmsRecord), interclinic_access: result.interclinic_access === true };
     }
     catch { return null; }
   },
@@ -501,10 +535,12 @@ export const likhaPatients = {
       },
       fields: ['id', 'first_name', 'last_name'],
     });
+    const accessible = await getAccessiblePatientIds('patient');
     return rows
       .map((row) => ({
         id: String(row.id),
         name: `${text(row, 'first_name') ?? ''} ${text(row, 'last_name') ?? ''}`.trim(),
+        hasAccess: accessible.has(String(row.id)),
       }))
       .slice(0, Math.max(1, Math.min(limit, 50)));
   },
@@ -518,7 +554,7 @@ export const likhaPatients = {
 
 export const likhaEncounters = {
   async getAll(params?: { patientId?: string; status?: string; page?: number; limit?: number }) {
-    const allowedPatients = await getAccessiblePatientIds();
+    const allowedPatients = await getAccessiblePatientIds('encounter');
     if (params?.patientId && !allowedPatients.has(params.patientId)) return paginated([], 0, params.page, params.limit);
     const result = await listAll('encounter', {
       sort: ['-encounter_date'],
@@ -534,7 +570,7 @@ export const likhaEncounters = {
   async getOne(id: string) {
     try {
       const encounter = mapEncounter(await likha.request(readItem('encounter', id)) as CmsRecord);
-      return await isPatientCustodian(relationId(encounter.patient_id) ?? '') ? encounter : null;
+      return await hasPatientScopeAccess(relationId(encounter.patient_id) ?? '', 'encounter') ? encounter : null;
     }
     catch { return null; }
   },
@@ -573,8 +609,33 @@ export const likhaEncounters = {
 };
 
 export const likhaInvoices = {
+  async hasOutpatientInvoiceForEncounter(encounterId: string) {
+    const encounter = await likhaEncounters.getOne(encounterId);
+    const patientId = encounter ? relationId(encounter.patient_id) : null;
+    if (!patientId || !await hasPatientScopeAccess(patientId, 'invoice')) return false;
+
+    const serviceRequests = await listAll('service_request', {
+      fields: ['id'],
+      filter: { encounter: { _eq: encounterId } },
+    });
+    const serviceRequestIds = (serviceRequests ?? []).map((row) => String(row.id));
+    if (serviceRequestIds.length === 0) return false;
+
+    const lineItems = await listAll('invoice_line_item', {
+      fields: ['invoice'],
+      filter: { service_request: { _in: serviceRequestIds } },
+    });
+    const invoiceIds = [...new Set((lineItems ?? []).map((row) => relationId((row as CmsRecord).invoice)).filter((id): id is string => Boolean(id)))];
+    if (invoiceIds.length === 0) return false;
+
+    const invoices = await listAll('invoice', {
+      fields: ['id', 'type'],
+      filter: { id: { _in: invoiceIds } },
+    });
+    return (invoices ?? []).some((row) => text(row as CmsRecord, 'type')?.toLowerCase() === 'outpatient');
+  },
   async getAll(params?: { patientId?: string; status?: string; page?: number; limit?: number }) {
-    const allowedPatients = await getAccessiblePatientIds();
+    const allowedPatients = await getAccessiblePatientIds('invoice');
     if (params?.patientId && !allowedPatients.has(params.patientId)) return paginated([], 0, params.page, params.limit);
     const filter = {
       ...(params?.patientId ? { patient: { _eq: params.patientId } } : {}),
@@ -589,7 +650,7 @@ export const likhaInvoices = {
   async getOne(id: string) {
     try {
       const invoice = mapInvoice(await likha.request(readItem('invoice', id)) as CmsRecord);
-      return await isPatientCustodian(relationId(invoice.patient_id) ?? '') ? invoice : null;
+      return await hasPatientScopeAccess(relationId(invoice.patient_id) ?? '', 'invoice') ? invoice : null;
     }
     catch { return null; }
   },
@@ -609,6 +670,8 @@ export const likhaInvoices = {
     const patientId = relationId(encounter.patient_id);
     if (!patientId || !await isPatientCustodian(patientId)) throw new Error('Interclinic records are read-only.');
     if (encounter.encounter_type?.startsWith('OPD')) {
+      if (!encounter.services_selected?.length) throw new Error('Select at least one service before generating an outpatient invoice.');
+      if (await likhaInvoices.hasOutpatientInvoiceForEncounter(encounter.id)) throw new Error('An outpatient invoice has already been generated for this encounter.');
       return likha.request(triggerFlow('POST', '0ad6cb38-ee22-4779-8d16-9d8f1ee953ea', {
         keys: [encounter.id],
         collection: 'encounter',
@@ -860,7 +923,7 @@ function resultCategory(collection: string): import('@/types').LabResult['catego
 
 export const likhaLabResults = {
   async getCollection(collection: ResultCollection): Promise<CmsRecord[]> {
-    const allowedPatients = await getAccessiblePatientIds();
+    const allowedPatients = await getAccessiblePatientIds('laboratory');
     const encounters = await listAll('encounter', { fields: ['id', 'patient'] });
     const allowedEncounterIds = new Set((encounters ?? []).flatMap((row) => {
       const encounter = row as CmsRecord;
@@ -883,7 +946,7 @@ export const likhaLabResults = {
     return String(uploaded.id);
   },
   async getAll(params?: { patientId?: string; status?: string; category?: string; page?: number; limit?: number }): Promise<{ data: import('@/types').LabResult[]; total: number }> {
-    const allowedPatients = await getAccessiblePatientIds();
+    const allowedPatients = await getAccessiblePatientIds('laboratory');
     if (params?.patientId && !allowedPatients.has(params.patientId)) return paginated([], 0, params.page, params.limit);
     const [sources, encounters] = await Promise.all([
       Promise.all(resultCollections.map(async (collection) => ({
