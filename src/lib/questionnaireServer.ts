@@ -44,8 +44,8 @@ export async function questionnaireSchema(service: string): Promise<Questionnair
       name: field.field,
       label: field.field === 'BMI' ? 'BMI' : field.field === 'od' ? 'OD (Right Eye)' : field.field === 'os' ? 'OS (Left Eye)' : label(field.field),
       group: field.meta?.group ?? 'general', type: field.type, interface: field.meta?.interface ?? null,
-      required: !!field.meta?.required || field.schema?.is_nullable === false,
-      readonly: !!field.meta?.readonly,
+      required: field.field !== 'submitted_at' && (!!field.meta?.required || field.schema?.is_nullable === false),
+      readonly: field.field === 'submitted_at' || !!field.meta?.readonly,
       maxLength: field.schema?.max_length ?? null,
       placeholder: field.meta?.options?.placeholder?.trim() ?? '',
       choices: (field.meta?.options?.choices ?? []).map((choice) => ({ label: label(choice.text.trim()), value: choice.value })),
@@ -70,7 +70,7 @@ export function questionnaireAnswers(input: unknown, schema: QuestionnaireSchema
 }
 
 export function responseFields(schema: QuestionnaireSchema) {
-  return ['id', 'patient.id', 'patient.first_name', 'patient.last_name', 'status', 'is_finalized', 'date_created', 'date_updated', ...schema.fields.map((field) => field.name)].join(',');
+  return [...new Set(['id', 'patient.id', 'patient.first_name', 'patient.last_name', 'status', 'is_finalized', 'date_created', 'date_updated', 'submitted_at', ...schema.fields.map((field) => field.name)])].join(',');
 }
 
 export function mapQuestionnaire(row: Record<string, unknown>, schema?: QuestionnaireSchema): QuestionnaireResponse {
@@ -78,6 +78,9 @@ export function mapQuestionnaire(row: Record<string, unknown>, schema?: Question
     id: String(row.id), patient: row.patient as QuestionnaireResponse['patient'],
     status: row.status as QuestionnaireResponse['status'], is_finalized: row.is_finalized === true,
     date_created: row.date_created as string | null, date_updated: row.date_updated as string | null,
+    submitted_at: typeof row.submitted_at === 'string'
+      ? (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(row.submitted_at) ? row.submitted_at : `${row.submitted_at.replace(' ', 'T')}Z`)
+      : null,
     ...(schema ? { values: Object.fromEntries(schema.fields.map((field) => [field.name, row[field.name] as QuestionnaireValue ?? null])) } : {}),
   };
 }

@@ -374,15 +374,6 @@ function userFromToken(accessToken: string, email: string): CurrentUser {
   };
 }
 
-function isInvalidUserOtp(error: unknown) {
-  const value = error as { message?: unknown; errors?: Array<{ message?: unknown; extensions?: { code?: unknown } }> };
-  const messages = [
-    value?.message,
-    ...(Array.isArray(value?.errors) ? value.errors.flatMap((item) => [item.message, item.extensions?.code]) : []),
-  ].filter((item): item is string => typeof item === 'string').join(' ');
-  return /invalid user otp|invalid.{0,30}(otp|one.time password)|(?:otp|one.time password).{0,30}(required|invalid)/i.test(messages);
-}
-
 export const likhaAuth = {
   hasAccessToken() {
     return Boolean(inMemoryAuth?.access_token && (inMemoryAuth.expires_at ?? 0) > Date.now());
@@ -457,7 +448,7 @@ export const likhaAuth = {
         loginError.warning = result.warning;
         loginError.blocked = result.blocked;
         if (result.blocked) loginError.name = 'LoginBlockedError';
-        else if (isInvalidUserOtp(result.error)) loginError.name = 'MfaAuthenticationError';
+        else if (result.code === 'MFA_REQUIRED' || result.code === 'INVALID_OTP') loginError.name = 'MfaAuthenticationError';
         else if (result.retryAfterSeconds) loginError.name = 'LoginCooldownError';
         else if (result.warning) loginError.name = 'LoginWarningError';
         else if (typeof result.failedAttempts === 'number') loginError.name = 'LoginFailureError';
@@ -475,17 +466,6 @@ export const likhaAuth = {
       return { user: userFromToken(session.access_token, normalizedEmail) };
     } catch (error) {
       if (loginSession === dataSession) authStorage.set(null);
-      if (!(error instanceof Error && ['LoginBlockedError', 'LoginCooldownError', 'LoginWarningError'].includes(error.name)) && isInvalidUserOtp(error)) {
-        const source = error as Error & { failedAttempts?: number; remainingAttempts?: number; retryAfterSeconds?: number; warning?: boolean; blocked?: boolean };
-        const mfaError = new Error('Authenticator code is required or invalid.') as Error & { failedAttempts?: number; remainingAttempts?: number; retryAfterSeconds?: number; warning?: boolean; blocked?: boolean };
-        mfaError.name = 'MfaAuthenticationError';
-        mfaError.failedAttempts = source.failedAttempts;
-        mfaError.remainingAttempts = source.remainingAttempts;
-        mfaError.retryAfterSeconds = source.retryAfterSeconds;
-        mfaError.warning = source.warning;
-        mfaError.blocked = source.blocked;
-        throw mfaError;
-      }
       throw error;
     }
   },

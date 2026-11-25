@@ -244,3 +244,14 @@ test('a delayed sign-in cannot restore a signed-out session or erase its replace
   await assert.rejects(login, /superseded/);
   assert.equal(globalThis.mockStorage.get().access_token, 'replacement');
 });
+
+test('client preserves structured MFA challenge/rejection messages and cooldown metadata', async () => {
+  const message = 'The EHR rejected this authenticator code.';
+  globalThis.fetch = async () => Response.json({ code: 'INVALID_OTP', error: message, retryAfterSeconds: 60, failedAttempts: 5, remainingAttempts: 20 }, { status: 429 });
+  await assert.rejects(adapter.likhaAuth.login('test@example.invalid', 'password', '000042'), (error) => {
+    assert.equal(error.name, 'MfaAuthenticationError');
+    assert.equal(error.message, message);
+    assert.equal(error.retryAfterSeconds, 60);
+    return true;
+  });
+});

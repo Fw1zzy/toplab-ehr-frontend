@@ -7,10 +7,11 @@ export const runtime = 'nodejs';
 
 const cmsBaseUrl = (process.env.LIKHA_CMS_URL || 'https://ehr.zyberlab.com').replace(/\/$/, '');
 
-function failureResponse(status: number, message: string, failedAttempts: number, retryAfterSeconds = 0) {
+function failureResponse(status: number, message: string, failedAttempts: number, retryAfterSeconds = 0, code?: string) {
   const remainingAttempts = Math.max(0, MAX_LOGIN_FAILURES - failedAttempts);
   return NextResponse.json({
     error: message,
+    code: code ?? (failedAttempts >= MAX_LOGIN_FAILURES ? 'LOGIN_BLOCKED' : retryAfterSeconds > 0 ? 'LOGIN_COOLDOWN' : 'INVALID_CREDENTIALS'),
     failedAttempts,
     remainingAttempts,
     retryAfterSeconds,
@@ -26,22 +27,24 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const email = typeof body.email === 'string' ? body.email.trim() : '';
     const password = typeof body.password === 'string' ? body.password : '';
-    const otp = typeof body.otp === 'string' && body.otp ? body.otp : undefined;
+    const otp = typeof body.otp === 'string' ? body.otp.replace(/\s+/g, '') || undefined : undefined;
     if (!email || !password) throw new InterclinicError('Email and password are required.', 400);
     if (otp && !/^\d{6}$/.test(otp)) throw new InterclinicError('Enter a valid six-digit authenticator code.', 400);
 
-    const serviceToken = process.env.LIKHA_PATIENT_SERVICE_TOKEN;
+    const serviceToken = process.env.LIKHA_PATIENT_SERVICE_TOKEN?.trim();
     if (!serviceToken) throw new InterclinicError('Login protection is not configured on the app server.', 503);
     const accountHash = hashLoginAccount(email);
-    const attempts = await readLoginAttempts(serviceToken, accountHash);
+    const otpHash = hashLoginAccount(email, 'otp');
+    const attempts = await readLoginAttempts(serviceToken, [accountHash, otpHash]);
     const failedAttempts = attempts.length;
     if (failedAttempts >= MAX_LOGIN_FAILURES) {
       return failureResponse(423, 'This account is blocked after 25 failed login attempts. Contact an EHR administrator to unlock it.', failedAttempts);
     }
 
-    const cooldownSeconds = cooldownSecondsForFailures(failedAttempts);
-    if (cooldownSeconds > 0 && attempts[0]) {
-      const retryAfterSeconds = remainingCooldown(failedAttempts, failureTimeUtc(attempts[0].failed_at));
+    const passwordAttempts = attempts.filter((attempt) => attempt.account_hash === accountHash);
+    const cooldownSeconds = cooldownSecondsForFailures(passwordAttempts.length);
+    if (cooldownSeconds > 0 && passwordAttempts[0]) {
+      const retryAfterSeconds = remainingCooldown(passwordAttempts.length, failureTimeUtc(passwordAttempts[0].failed_at));
       if (retryAfterSeconds > 0) {
         return failureResponse(429, 'Too many failed attempts. Please wait before trying again.', failedAttempts, retryAfterSeconds);
       }
@@ -49,28 +52,28 @@ export async function POST(request: NextRequest) {
 
     const upstream = await fetch(`${cmsBaseUrl}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'curl/8.5.0' },
       body: JSON.stringify({ email, password, mode: 'json', ...(otp ? { otp } : {}) }),
-      cache: 'no-store',
+      cache: 'no-store', redirect: 'error',
     });
     const result = await upstream.json().catch(() => ({}));
     if (!upstream.ok) {
       const authCode = result.errors?.[0]?.extensions?.code;
       const invalidOtp = authCode === 'INVALID_OTP' || /invalid user otp/i.test(String(result.errors?.[0]?.message ?? ''));
-      if (invalidOtp && !otp) return failureResponse(401, 'Invalid user OTP.', failedAttempts);
+      if (invalidOtp && !otp) return failureResponse(401, 'Enter the current authenticator code for this EHR account.', failedAttempts, 0, 'MFA_REQUIRED');
       if (!invalidOtp && authCode !== 'INVALID_CREDENTIALS' && !(upstream.status === 401 && !authCode)) {
         return NextResponse.json({ error: 'The EHR could not complete sign-in. No failed attempt was recorded.' }, { status: upstream.status, headers: { 'Cache-Control': 'no-store' } });
       }
-      await recordLoginFailure(serviceToken, accountHash);
+      await recordLoginFailure(serviceToken, invalidOtp ? otpHash : accountHash);
       const newFailureCount = failedAttempts + 1;
       if (newFailureCount >= MAX_LOGIN_FAILURES) {
         return failureResponse(423, 'This account is blocked after 25 failed login attempts. Contact an EHR administrator to unlock it.', newFailureCount);
       }
-      const delaySeconds = cooldownSecondsForFailures(newFailureCount);
+      const delaySeconds = invalidOtp ? 0 : cooldownSecondsForFailures(passwordAttempts.length + 1);
       const message = invalidOtp
-        ? 'Invalid user OTP.'
+        ? 'The EHR rejected this authenticator code. Use a fresh code for this account and check that your phone uses automatic date and time.'
         : 'Invalid email or password.';
-      return failureResponse(delaySeconds ? 429 : 401, message, newFailureCount, delaySeconds);
+      return failureResponse(delaySeconds ? 429 : 401, message, newFailureCount, delaySeconds, invalidOtp ? 'INVALID_OTP' : undefined);
     }
 
     await clearLoginAttempts(serviceToken, attempts);

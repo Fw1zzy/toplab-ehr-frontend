@@ -16,6 +16,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   with_results: { label: 'With Results', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   // Invoice and corporate request statuses
   draft: { label: 'Draft', className: 'bg-slate-50 text-slate-600 ring-slate-500/20' },
+  published: { label: 'Published', className: 'bg-blue-50 text-blue-700 ring-blue-600/20' },
+  archived: { label: 'Archived', className: 'bg-slate-50 text-slate-500 ring-slate-500/20' },
   issued: { label: 'Issued', className: 'bg-blue-50 text-blue-700 ring-blue-600/20' },
   unpaid: { label: 'Unpaid', className: 'bg-red-50 text-red-600 ring-red-500/20' },
   paid: { label: 'Paid', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },

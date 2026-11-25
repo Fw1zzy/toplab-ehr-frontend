@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: await questionnaireSchema(context.service) }, { headers });
     }
     const search = (params.get('search') ?? '').trim().slice(0, 200);
-    const terms = search.split(/\s+/).filter(Boolean);
+    const terms = search.split(/[\s,]+/).filter(Boolean);
     const patientSearch = terms.map((term) => ({ _or: [
       { first_name: { _icontains: term } }, { last_name: { _icontains: term } },
     ] }));
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       ...patientSearch.map((searchFilter) => ({ patient: searchFilter })),
     ] };
     const query = new URLSearchParams({
-      fields: 'id,patient.id,patient.first_name,patient.last_name,status,is_finalized,date_created,date_updated',
+      fields: 'id,patient.id,patient.first_name,patient.last_name,status,is_finalized,date_created,date_updated,submitted_at',
       sort: '-date_created,id', limit: String(limit), offset: String((page - 1) * limit), filter: JSON.stringify(filter),
     });
     const countQuery = new URLSearchParams({ filter: JSON.stringify(filter), aggregate: JSON.stringify({ count: ['id'] }) });
@@ -58,7 +58,9 @@ export async function POST(request: NextRequest) {
     await assertQuestionnairePatient(context.token, context.branch.id, patientId);
     const schema = await questionnaireSchema(context.service);
     const values = questionnaireAnswers({ status: 'draft', ...body.values }, schema, true);
-    const created = await cmsRequest<{ id: string }>(context.token, '/items/questionnaire_response?fields=id', 'POST', { ...values, patient: patientId });
+    const created = await cmsRequest<{ id: string }>(context.token, '/items/questionnaire_response?fields=id', 'POST', {
+      ...values, patient: patientId, submitted_at: new Date().toISOString().slice(0, -1),
+    });
     return NextResponse.json({ data: { id: created.id } }, { status: 201, headers });
   } catch (cause) {
     const error = questionnaireError(cause);

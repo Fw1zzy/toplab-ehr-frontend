@@ -34,21 +34,27 @@ export async function GET(request: NextRequest) {
       loadAttempts(serviceToken),
       cmsRequest<UserRow[]>(serviceToken, '/users?limit=2000&fields=id,email,first_name,last_name'),
     ]);
-    const grouped = new Map<string, AttemptRow[]>();
+    const userByHash = new Map(users.filter((user) => user.email).flatMap((user) => [
+      [hashLoginAccount(user.email), user] as const,
+      [hashLoginAccount(user.email, 'otp'), user] as const,
+    ]));
+    const grouped = new Map<string, { user: UserRow; rows: AttemptRow[] }>();
     for (const attempt of attempts) {
-      const rows = grouped.get(attempt.account_hash) ?? [];
-      rows.push(attempt);
-      grouped.set(attempt.account_hash, rows);
+      const user = userByHash.get(attempt.account_hash);
+      if (!user) continue;
+      const group = grouped.get(user.id) ?? { user, rows: [] };
+      group.rows.push(attempt);
+      grouped.set(user.id, group);
     }
-    const userByHash = new Map(users.filter((user) => user.email).map((user) => [hashLoginAccount(user.email), user]));
     const now = Date.now();
-    const data = [...grouped.entries()].flatMap(([accountHash, rows]) => {
-      const user = userByHash.get(accountHash);
-      if (!user || rows.length < 20) return [];
+    const data = [...grouped.values()].flatMap(({ user, rows }) => {
+      if (rows.length < 20) return [];
       const failedAttempts = rows.length;
       const latest = Math.max(...rows.map((row) => failureTimeUtc(row.failed_at)));
       const lastFailedAt = new Date(latest).toISOString();
-      const retryAfterSeconds = remainingCooldown(failedAttempts, latest, now);
+      const passwordRows = rows.filter((row) => row.account_hash === hashLoginAccount(user.email));
+      const lastPasswordFailure = passwordRows.length ? Math.max(...passwordRows.map((row) => failureTimeUtc(row.failed_at))) : 0;
+      const retryAfterSeconds = remainingCooldown(passwordRows.length, lastPasswordFailure, now);
       return [{
         userId: user.id,
         email: user.email,
@@ -77,9 +83,9 @@ export async function POST(request: NextRequest) {
     const user = await cmsRequest<UserRow>(serviceToken,
       `/users/${encodeURIComponent(userId)}?fields=id,email,first_name,last_name`);
     if (!user.email) throw new InterclinicError('This account has no email address and cannot be unlocked through this screen.', 409);
-    const accountHash = hashLoginAccount(user.email);
+    const accountHashes = [hashLoginAccount(user.email), hashLoginAccount(user.email, 'otp')];
     const query = new URLSearchParams({ limit: '100', fields: 'id' });
-    query.set('filter[account_hash][_eq]', accountHash);
+    query.set('filter[account_hash][_in]', accountHashes.join(','));
     const attempts = await cmsRequest<Array<{ id: string }>>(serviceToken, `/items/${LOGIN_ATTEMPT_COLLECTION}?${query}`);
     await Promise.all(attempts.map((attempt) =>
       cmsRequest(serviceToken, `/items/${LOGIN_ATTEMPT_COLLECTION}/${encodeURIComponent(attempt.id)}`, 'DELETE'),

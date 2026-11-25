@@ -30,9 +30,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const context = await questionnaireContext(request);
     const { id } = await params;
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new InterclinicError('Invalid questionnaire response.', 400);
-    const query = new URLSearchParams({ limit: '1', fields: 'id,patient',
+    const query = new URLSearchParams({ limit: '1', fields: 'id,patient,submitted_at',
       filter: JSON.stringify({ _and: [{ id: { _eq: id } }, questionnaireScope(context.branch.id)] }) });
-    const rows = await cmsRequest<Array<{ id: string; patient: string | { id: string } }>>(context.token, `/items/questionnaire_response?${query}`);
+    const rows = await cmsRequest<Array<{ id: string; patient: string | { id: string }; submitted_at: string | null }>>(context.token, `/items/questionnaire_response?${query}`);
     if (!rows[0]) throw new InterclinicError('This questionnaire response was not found or is not accessible to your branch.', 404);
     const patientId = typeof rows[0].patient === 'string' ? rows[0].patient : rows[0].patient.id;
     await assertQuestionnairePatient(context.token, context.branch.id, patientId);
@@ -41,7 +41,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const schema = await questionnaireSchema(context.service);
     const values = questionnaireAnswers(body.values, schema, false);
     if (!Object.keys(values).length) throw new InterclinicError('No questionnaire changes were supplied.', 400);
-    await cmsRequest(context.token, `/items/questionnaire_response/${encodeURIComponent(id)}?fields=id`, 'PATCH', values);
+    await cmsRequest(context.token, `/items/questionnaire_response/${encodeURIComponent(id)}?fields=id`, 'PATCH', {
+      ...values,
+      ...(!rows[0].submitted_at ? { submitted_at: new Date().toISOString().slice(0, -1) } : {}),
+    });
     return NextResponse.json({ data: { id } }, { headers });
   } catch (cause) {
     const error = questionnaireError(cause);

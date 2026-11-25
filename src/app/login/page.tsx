@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, AlertCircle, LockKeyhole, LoaderCircle, ShieldCheck } from 'lucide-react';
@@ -34,6 +34,7 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [requiresOtp, setRequiresOtp] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const [loginWarning, setLoginWarning] = useState(false);
   const [accountBlocked, setAccountBlocked] = useState(false);
   const [retrySeconds, setRetrySeconds] = useState(0);
@@ -49,6 +50,7 @@ function LoginForm() {
     register,
     handleSubmit,
     setValue,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -66,8 +68,10 @@ function LoginForm() {
         ? from
         : null;
       const destination = safeFrom ?? preferences.defaultLanding;
+      setIsNavigating(true);
       router.replace(destination);
     } catch (err) {
+      setIsNavigating(false);
       const attemptError = err as Error & { retryAfterSeconds?: number; warning?: boolean; blocked?: boolean; remainingAttempts?: number };
       if (err instanceof Error && err.name === 'MfaAuthenticationError') {
         setRequiresOtp(true);
@@ -76,6 +80,7 @@ function LoginForm() {
         setAccountBlocked(!!attemptError.blocked);
         setRemainingAttempts(attemptError.remainingAttempts ?? null);
         setRetrySeconds(attemptError.retryAfterSeconds ?? 0);
+        setValue('otp', '');
         return;
       }
       setAuthError(err instanceof Error ? err.message : 'Authentication failed. Please try again.');
@@ -86,8 +91,22 @@ function LoginForm() {
     }
   }
 
+  function resetMfaPrompt() {
+    setRequiresOtp(false);
+    setValue('otp', '');
+    setAuthError(null);
+    setAccountBlocked(false);
+    setLoginWarning(false);
+    setRemainingAttempts(null);
+    setRetrySeconds(0);
+  }
+
   return (
-    <div className="w-full max-w-[430px] rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_26px_80px_-42px_rgba(15,39,67,0.28)] sm:p-9">
+    <>
+    {(isSubmitting || isNavigating) && <div className="fixed inset-0 z-[100] overflow-y-auto">
+      <BrandLoader label={isNavigating ? 'Opening your workspace' : requiresOtp ? 'Verifying your authenticator code' : 'Signing you in'} detail="Securely connecting to your EHR workspace" />
+    </div>}
+    <div inert={isSubmitting || isNavigating} aria-busy={isSubmitting || isNavigating} className="w-full max-w-[430px] rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_26px_80px_-42px_rgba(15,39,67,0.28)] sm:p-9">
       {/* Mobile logo */}
       <div className="mb-8 flex items-center gap-3 lg:hidden">
         <BrandLogo size="md" alt="TOPLAB" />
@@ -126,7 +145,8 @@ function LoginForm() {
             id="email"
             type="email"
             autoComplete="email"
-            {...register('email')}
+            {...register('email', { onChange: resetMfaPrompt })}
+            disabled={isSubmitting}
             className={cn(
               'h-12 w-full rounded-xl border px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400',
               'focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10',
@@ -151,7 +171,8 @@ function LoginForm() {
               id="password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
-              {...register('password')}
+              {...register('password', { onChange: () => { setValue('otp', ''); setAuthError(null); } })}
+              disabled={isSubmitting}
               className={cn(
                 'h-12 w-full rounded-xl border px-3.5 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400',
                 'focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10',
@@ -181,7 +202,8 @@ function LoginForm() {
 
         {requiresOtp && <div>
           <label htmlFor="otp" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600">Authenticator code</label>
-          <input
+          <Controller name="otp" control={control} render={({ field }) => <input
+            {...field}
             id="otp"
             type="text"
             inputMode="numeric"
@@ -189,8 +211,13 @@ function LoginForm() {
             pattern="[0-9]{6}"
             maxLength={6}
             autoFocus
-            {...register('otp')}
-            onChange={(event) => setValue('otp', event.target.value.replace(/\D/g, '').slice(0, 6), { shouldValidate: true })}
+            value={field.value ?? ''}
+            disabled={isSubmitting}
+            onChange={(event) => field.onChange(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            onPaste={(event) => {
+              event.preventDefault();
+              field.onChange(event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6));
+            }}
             className={cn(
               'h-12 w-full rounded-xl border px-3.5 text-center font-mono text-lg tracking-[0.4em] text-slate-900 outline-none transition',
               'focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10',
@@ -198,8 +225,8 @@ function LoginForm() {
             )}
             placeholder="000000"
             aria-describedby="otp-help"
-          />
-          <p id="otp-help" className="mt-1.5 text-[11px] leading-relaxed text-slate-500">Enter the current six-digit code from your authenticator app.</p>
+          />} />
+          <p id="otp-help" className="mt-1.5 text-[11px] leading-relaxed text-slate-500">On iPhone, use the Verification Code in Apple Passwords for this EHR account. A passkey or the iPhone unlock passcode is not an authenticator code. Incorrect codes have no escalating timer, but still count toward the 25-failure account block.</p>
           {errors.otp && <p role="alert" className="mt-1 text-xs text-red-600">{errors.otp.message}</p>}
         </div>}
 
@@ -236,10 +263,17 @@ function LoginForm() {
         <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Protected health information. Authorized users only.
       </p>
     </div>
+    </>
   );
 }
 
 export default function LoginPage() {
+  return <Suspense fallback={<BrandLoader label="Preparing sign in" detail="Loading your secure login form" />}>
+    <LoginContent />
+  </Suspense>;
+}
+
+function LoginContent() {
   return (
     <div className="min-h-screen bg-[#f4f7fb] lg:grid lg:grid-cols-[minmax(0,1.08fr)_minmax(480px,0.92fr)]">
       <aside className="relative hidden min-h-screen overflow-hidden bg-[#071b33] px-12 py-10 text-white lg:flex lg:flex-col xl:px-16">
@@ -283,9 +317,7 @@ export default function LoginPage() {
       </aside>
 
       <main className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-8 lg:px-12">
-        <Suspense fallback={<BrandLoader compact label="Preparing sign in" detail="Loading your secure login form" />}>
-          <LoginForm />
-        </Suspense>
+        <LoginForm />
       </main>
     </div>
   );
