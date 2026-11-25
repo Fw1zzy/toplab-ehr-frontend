@@ -9,7 +9,7 @@ import { usePatients } from '@/lib/queries/usePatients';
 import { useCreateEncounter } from '@/lib/queries/useEncounters';
 import { useCompanies } from '@/lib/queries/useCompanies';
 import { api } from '@/lib/api';
-import { EncounterStatus } from '@/types';
+import { Encounter, EncounterStatus } from '@/types';
 
 interface AddEncounterFormProps {
   open: boolean;
@@ -18,9 +18,13 @@ interface AddEncounterFormProps {
 
 const ITEMS_PER_PAGE = 8;
 
-export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) {
+export function AddEncounterForm(props: AddEncounterFormProps) {
+  return props.open ? <EncounterForm {...props} /> : null;
+}
+
+function EncounterForm({ open, onOpenChange }: AddEncounterFormProps) {
   const { data: patientsData } = usePatients({ limit: 1000 });
-  const patients = patientsData?.data ?? [];
+  const patients = patientsData?.data;
   const { data: companiesData } = useCompanies();
   const companies = companiesData?.data ?? [];
   const { data: serviceCatalog = [] } = useQuery({
@@ -60,16 +64,17 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
   }, []);
 
   const filteredPatients = useMemo(() => {
-    if (!patientSearch) return patients;
+    const rows = patients ?? [];
+    if (!patientSearch) return rows;
     const lower = patientSearch.toLowerCase();
-    return patients.filter(p => 
+    return rows.filter(p =>
       p.first_name.toLowerCase().includes(lower) || 
       p.last_name.toLowerCase().includes(lower)
     );
   }, [patients, patientSearch]);
 
   const selectedPatient = useMemo(() => {
-    return patients.find(p => p.id === patientId);
+    return patients?.find(p => p.id === patientId);
   }, [patients, patientId]);
 
   // Payment route is derived from encounterType
@@ -79,27 +84,6 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
   const [serviceSearch, setServiceSearch] = useState('');
   const [selectedServices, setSelectedServices] = useState<{id: string; name: string; price: number; department: string | null}[]>([]);
   const [servicePage, setServicePage] = useState(1);
-
-  // Reset pagination when search changes
-  useEffect(() => {
-    setServicePage(1);
-  }, [serviceSearch]);
-
-  // Reset form when opened
-  useEffect(() => {
-    if (open) {
-      setEncounterType('OPD');
-      setSubmitError(null);
-      setPatientId('');
-      setCompany('');
-      setCorporateRequest('');
-      setStatus('in_progress');
-      setSelectedServices([]);
-      setServiceSearch('');
-      setPatientSearch('');
-      setIsPatientDropdownOpen(false);
-    }
-  }, [open]);
 
   const filteredServices = useMemo(() => {
     return availableServices.filter(s => s.name.toLowerCase().includes(serviceSearch.toLowerCase()));
@@ -132,7 +116,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
     }
 
     try {
-      const payload = {
+      const payload: Partial<Encounter> = {
         encounter_type: encounterType,
         patient_id: patientId,
         company: encounterType !== 'OPD' ? company : null,
@@ -333,7 +317,7 @@ export function AddEncounterForm({ open, onOpenChange }: AddEncounterFormProps) 
                   <input
                     type="text"
                     value={serviceSearch}
-                    onChange={(e) => setServiceSearch(e.target.value)}
+                    onChange={(e) => { setServiceSearch(e.target.value); setServicePage(1); }}
                     placeholder="Search services..."
                     className="w-full h-9 pl-9 pr-4 text-sm bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all"
                   />

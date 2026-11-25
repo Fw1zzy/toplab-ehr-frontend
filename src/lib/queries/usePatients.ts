@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Patient } from '@/types';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 export const patientKeys = {
   all: ['patients'] as const,
@@ -15,18 +17,23 @@ export function usePatients(params?: {
   page?: number;
   limit?: number;
 }) {
+  const { isAuthenticated, user } = useAuth();
+  const search = useDebouncedValue(params?.search ?? '');
+  const queryParams = { ...params, search };
   return useQuery({
-    queryKey: patientKeys.list(params ?? {}),
-    queryFn: () => api.patients.getAll(params),
+    queryKey: [...patientKeys.list(queryParams), user?.id],
+    queryFn: ({ signal }) => api.patients.getAll(queryParams, signal),
+    enabled: isAuthenticated,
     staleTime: 30_000,
   });
 }
 
 export function usePatient(id: string | undefined) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: patientKeys.detail(id ?? ''),
-    queryFn: () => api.patients.getOne(id!),
-    enabled: !!id,
+    queryKey: [...patientKeys.detail(id ?? ''), user?.id],
+    queryFn: ({ signal }) => api.patients.getOne(id!, signal),
+    enabled: !!id && !!user,
     staleTime: 60_000,
   });
 }

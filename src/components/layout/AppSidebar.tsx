@@ -79,6 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Companies', href: '/companies', icon: Building2 },
       { label: 'Corporate Requests', href: '/corporate-requests', icon: ClipboardCheck },
+      { label: 'Questionnaire Responses', href: '/questionnaire-responses', icon: ClipboardList },
     ],
   },
   {

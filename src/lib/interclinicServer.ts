@@ -27,6 +27,7 @@ export async function cmsRequest<T = Record<string, unknown>>(token: string, pat
     method,
     headers: {
       Authorization: `Bearer ${token}`,
+      'User-Agent': 'curl/8.5.0',
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

@@ -11,23 +11,19 @@ import { useLabResults } from '@/lib/queries/useLabResults';
 import { usePatients } from '@/lib/queries/usePatients';
 import { LabResult } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 interface ResultGroup {
   collection: string;
   label: string;
 }
 
-function progressText(status: string | null) {
-  if (!status) return 'Not Set';
-  if (status === 'with_results' || status === 'completed' || status === 'released') return 'With Results';
-  if (status === 'for_encoding' || status === 'processing' || status === 'pending') return 'In Progress';
-  return status ? status.replace(/_/g, ' ') : 'Not Set';
-}
-
 export default function LaboratoryPage() {
   const [progressFilter, setProgressFilter] = useState<'all' | 'in_progress' | 'with_results'>('all');
   const [search, setSearch] = useState('');
-  const { data, isLoading, error } = useLabResults({ page: 1, limit: 10000 });
+  const [page, setPage] = useState(1);
+  const { data, isLoading, error } = useLabResults({ page, limit: 20, status: progressFilter, search });
+  const countsQuery = useQuery({ queryKey: ['lab-results', 'counts', 'all'], queryFn: ({ signal }) => api.labResults.getCounts(undefined, signal), staleTime: 30_000 });
   const patientsQuery = usePatients({ limit: 100 });
   const schemaQuery = useQuery({
     queryKey: ['lab-results-schema'],
@@ -45,26 +41,17 @@ export default function LaboratoryPage() {
   ])), [patientsQuery.data]);
   const collectionNames = useMemo(() => new Map((schemaQuery.data ?? []).map((item) => [item.collection, item.label])), [schemaQuery.data]);
   const allResults = data?.data ?? [];
-  const inProgressCount = allResults.filter((item) => progressText(item.status) === 'In Progress').length;
-  const withResultsCount = allResults.filter((item) => progressText(item.status) === 'With Results').length;
-
-  const filtered = allResults.filter((item) => {
-    const progress = progressText(item.status);
-    const matchesStatus = progressFilter === 'all'
-      || (progressFilter === 'in_progress' && progress === 'In Progress')
-      || (progressFilter === 'with_results' && progress === 'With Results');
-    const patientId = typeof item.patient_id === 'string' ? item.patient_id : item.patient_id.id;
-    const patientName = patientNames.get(patientId) ?? (patientsQuery.isLoading ? 'Loading patient...' : 'Unknown patient');
-    const haystack = `${patientName} ${item.test_name} ${item.result_collection ?? ''} ${item.remarks ?? ''}`.toLowerCase();
-    return matchesStatus && (!search || haystack.includes(search.toLowerCase()));
-  });
+  const inProgressCount = countsQuery.data?.inProgress ?? 0;
+  const withResultsCount = countsQuery.data?.withResults ?? 0;
+  const filtered = allResults;
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / 20));
 
   return (
     <div className="space-y-5">
       <PageHeader title="Laboratory" description="Overview of results and encoding progress across all EHR laboratory collections." />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard title="All Results" value={allResults.length} icon={FlaskConical} iconColor="text-blue-600" subtitle="Across laboratory collections" />
+        <StatCard title="All Results" value={countsQuery.data?.total ?? 0} icon={FlaskConical} iconColor="text-blue-600" subtitle="Across laboratory collections" />
         <StatCard title="In Progress" value={inProgressCount} icon={Activity} iconColor="text-amber-600" subtitle="Awaiting result entry" />
         <StatCard title="With Results" value={withResultsCount} icon={CheckCircle2} iconColor="text-emerald-600" subtitle="Results recorded" />
       </div>
@@ -76,11 +63,11 @@ export default function LaboratoryPage() {
               ['all', 'All Results'],
               ['in_progress', 'In Progress'],
               ['with_results', 'With Results'],
-            ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setProgressFilter(value)} className={`h-8 rounded-lg px-3 text-xs font-medium transition-colors ${progressFilter === value ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}
+            ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => { setProgressFilter(value); setPage(1); }} className={`h-8 rounded-lg px-3 text-xs font-medium transition-colors ${progressFilter === value ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}
           </div>
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search patient, test, or collection" aria-label="Search all laboratory results" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" />
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search patient, test, or collection" aria-label="Search all laboratory results" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" />
           </div>
         </div>
 
@@ -107,7 +94,7 @@ export default function LaboratoryPage() {
                   return <tr key={`${item.result_collection}-${item.id}`}>
                     <td className="px-5 py-3.5 text-xs font-medium text-slate-800">{patientName || (patientsQuery.isLoading ? 'Loading patient...' : 'Unknown patient')}</td>
                     <td className="px-4 py-3.5"><p className="text-xs font-medium text-slate-800">{collectionNames.get(item.result_collection ?? '') ?? item.test_name}</p><p className="mt-0.5 text-[10px] text-slate-400">{item.test_name}</p></td>
-                    <td className="px-4 py-3.5 text-xs text-slate-600">{formatDate(item.collected_date ?? item.released_date)}</td>
+                    <td className="px-4 py-3.5 text-xs text-slate-600">{formatDate(item.collected_date ?? item.released_date ?? item.requested_date)}</td>
                     <td className="px-4 py-3.5"><ProgressPill status={item.status} /></td>
                     <td className="max-w-xs truncate px-4 py-3.5 text-xs text-slate-500" title={item.remarks ?? ''}>{item.remarks ?? '—'}</td>
                   </tr>;
@@ -116,7 +103,7 @@ export default function LaboratoryPage() {
             </table>
           </div>
         )}
-        {!isLoading && !error && <div className="border-t border-slate-100 px-5 py-3 text-[11px] text-slate-400">Showing {filtered.length} of {allResults.length} loaded EHR results.</div>}
+        {!isLoading && !error && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-[11px] text-slate-500"><span>{data?.total ?? 0} matching results · Page {page} of {totalPages}</span><div className="flex gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><button type="button" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} className="rounded border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div></div>}
       </section>
     </div>
   );

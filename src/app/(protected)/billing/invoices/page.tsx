@@ -38,7 +38,8 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, error } = useInvoices({ page: 1, limit: 100 });
+  const { data, isLoading, error } = useInvoices({ page, limit: PAGE_SIZE, search,
+    type: activeTab === 'corporate' ? 'Corporate' : 'Outpatient', status: statusTab === 'all' ? undefined : statusTab });
   const patientsQuery = usePatients({ limit: 100 });
   const companiesQuery = useCompanies();
   const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
@@ -46,33 +47,9 @@ export default function InvoicesPage() {
 
   const allInvoices = data?.data ?? [];
 
-  // Filter by tab type
-  const tabInvoices = allInvoices.filter((invoice: Invoice) => invoice.type === (activeTab === 'corporate' ? 'Corporate' : 'Outpatient'));
-  const statusInvoices = statusTab === 'all' ? tabInvoices : tabInvoices.filter((invoice) => invoice.status === statusTab);
-
-  // Apply search
-  const filtered = search
-    ? statusInvoices.filter((inv: Invoice) => {
-        if (activeTab === 'corporate') {
-          const companyName = inv.company_id ? companyNames.get(inv.company_id) ?? '' : '';
-          return (
-            companyName.toLowerCase().includes(search.toLowerCase()) ||
-            (inv.invoice_number ?? '').toLowerCase().includes(search.toLowerCase())
-          );
-        } else {
-          const name = getPatientName(inv.patient_id, patientNames, patientsQuery.isLoading).toLowerCase();
-          return (
-            name.includes(search.toLowerCase()) ||
-            (inv.invoice_number ?? '').toLowerCase().includes(search.toLowerCase())
-          );
-        }
-      })
-    : statusInvoices;
-
-  // Pagination
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const paged = allInvoices;
 
   return (
     <div className="space-y-5">

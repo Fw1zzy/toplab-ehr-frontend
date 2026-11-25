@@ -12,7 +12,7 @@ export function useCompanies() {
   return useQuery({
     queryKey: companyKeys.lists(),
     queryFn: () => api.companies.getAll(),
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
 }
 

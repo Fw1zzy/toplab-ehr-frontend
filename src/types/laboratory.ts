@@ -19,6 +19,7 @@ export interface LabResult {
   category: LabCategory;
   status: LabResultStatus | null;
   collected_date: string | null;
+  requested_date?: string | null;
   released_date: string | null;
   result_collection: string;
   remarks: string | null;

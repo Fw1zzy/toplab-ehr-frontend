@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { Encounter } from '@/types';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 export const encounterKeys = {
   all: ['encounters'] as const,
@@ -14,19 +17,26 @@ export function useEncounters(params?: {
   status?: string;
   page?: number;
   limit?: number;
-}) {
+  search?: string;
+  kind?: string;
+}, enabled = true) {
+  const { isAuthenticated, user } = useAuth();
+  const search = useDebouncedValue(params?.search ?? '');
+  const queryParams = { ...params, search };
   return useQuery({
-    queryKey: encounterKeys.list(params ?? {}),
-    queryFn: () => api.encounters.getAll(params),
+    queryKey: [...encounterKeys.list(queryParams), user?.id],
+    queryFn: ({ signal }) => api.encounters.getAll(queryParams, signal),
+    enabled: enabled && isAuthenticated,
     staleTime: 30_000,
   });
 }
 
 export function useEncounter(id: string | undefined) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: encounterKeys.detail(id ?? ''),
-    queryFn: () => api.encounters.getOne(id!),
-    enabled: !!id,
+    queryKey: [...encounterKeys.detail(id ?? ''), user?.id],
+    queryFn: ({ signal }) => api.encounters.getOne(id!, signal),
+    enabled: !!id && !!user,
     staleTime: 60_000,
   });
 }
@@ -35,9 +45,10 @@ export function useCreateEncounter() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: any) => api.encounters.create(data),
+    mutationFn: (data: Partial<Encounter>) => api.encounters.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: encounterKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }

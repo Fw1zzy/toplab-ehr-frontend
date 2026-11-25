@@ -12,18 +12,16 @@ import {
   usePatientQueue,
   useRecentLabResults,
 } from '@/lib/queries/useDashboard';
-import { usePatients } from '@/lib/queries/usePatients';
 import { formatDate } from '@/lib/utils';
 import { Encounter, LabResult } from '@/types';
 
-function getPatientName(patientId: string | object, patientNames: Map<string, string>, patientsLoading: boolean): string {
+function getPatientName(patientId: string | object): string {
   if (typeof patientId === 'object' && patientId !== null) {
     const p = patientId as { first_name: string; last_name: string };
     const name = `${p.first_name} ${p.last_name}`.trim();
     if (name) return name;
   }
-  const id = typeof patientId === 'string' ? patientId : (patientId as { id?: string }).id ?? '';
-  return patientNames.get(id) ?? (patientsLoading ? 'Loading patient...' : 'Unknown patient');
+  return 'Unknown patient';
 }
 
 export default function DashboardPage() {
@@ -31,16 +29,11 @@ export default function DashboardPage() {
   const todayEncountersQuery = useTodayEncounters();
   const queueQuery = usePatientQueue();
   const labsQuery = useRecentLabResults();
-  const patientsQuery = usePatients({ limit: 100 });
 
   const metrics = metricsQuery.data;
   const todayEncounters = todayEncountersQuery.data ?? [];
   const queue = queueQuery.data ?? [];
   const labs = labsQuery.data ?? [];
-  const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [
-    patient.id,
-    `${patient.first_name} ${patient.last_name}`.trim(),
-  ]));
 
   return (
     <div className="space-y-6">
@@ -128,8 +121,8 @@ export default function DashboardPage() {
         <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Today's Encounters</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{todayEncounters.length} encounters recorded today</p>
+              <h2 className="text-sm font-semibold text-slate-900">Today&apos;s Encounters</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Showing {todayEncounters.length} of {metrics?.todayEncounters ?? todayEncounters.length} encounters recorded today</p>
             </div>
             <a href="/appointments" className="text-xs text-blue-600 hover:underline font-medium">
               View all
@@ -159,9 +152,9 @@ export default function DashboardPage() {
                     <tr key={enc.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
-                           <Avatar name={getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading)} size="sm" />
+                           <Avatar name={getPatientName(enc.patient_id)} size="sm" />
                           <span className="text-xs font-medium text-slate-900">
-                             {getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading)}
+                              {getPatientName(enc.patient_id)}
                           </span>
                         </div>
                       </td>
@@ -211,7 +204,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-slate-900 truncate">
-                      {getPatientName(enc.patient_id, patientNames, patientsQuery.isLoading)}
+                      {getPatientName(enc.patient_id)}
                     </p>
                     <p className="text-[10px] text-slate-400 truncate">{enc.service ?? 'General'}</p>
                   </div>
@@ -260,9 +253,9 @@ export default function DashboardPage() {
                   <tr key={lab.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2.5">
-                         <Avatar name={getPatientName(lab.patient_id, patientNames, patientsQuery.isLoading)} size="sm" />
+                          <Avatar name={getPatientName(lab.patient_id)} size="sm" />
                         <span className="text-xs font-medium text-slate-900">
-                           {getPatientName(lab.patient_id, patientNames, patientsQuery.isLoading)}
+                            {getPatientName(lab.patient_id)}
                         </span>
                       </div>
                     </td>

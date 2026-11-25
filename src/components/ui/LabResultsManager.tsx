@@ -1,5 +1,7 @@
 'use client';
 
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+
 import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -37,13 +39,6 @@ const patientIdFromEncounter = (value: unknown) => {
   return '';
 };
 
-function progressLabel(value: unknown) {
-  const status = String(value ?? '').toLowerCase();
-  if (status === 'with_results' || status === 'completed' || status === 'released') return 'With Results';
-  if (status === 'for_encoding' || status === 'processing' || status === 'pending') return 'In Progress';
-  return status ? status.replace(/_/g, ' ') : 'Not Set';
-}
-
 function displayValue(value: unknown) {
   if (value == null || value === '') return 'Not entered';
   if (typeof value === 'object') return JSON.stringify(value);
@@ -66,6 +61,7 @@ export function LabResultsManager() {
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const [categorySearch, setCategorySearch] = useState('');
   const [resultSearch, setResultSearch] = useState('');
+  const settledSearch = useDebouncedValue(resultSearch);
   const [statusFilter, setStatusFilter] = useState<'all' | 'in_progress' | 'with_results'>('all');
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -84,20 +80,32 @@ export function LabResultsManager() {
   const activeGroup = isAllResults ? null : collections.find((item) => item.collection === selectedCollection) ?? null;
 
   const allResultsQuery = useQuery({
-    queryKey: ['lab-results', 'all-collections'],
-    queryFn: () => api.labResults.getAll({ page: 1, limit: 10000 }),
+    queryKey: ['lab-results', 'all-collections', page, preferences.rowsPerPage, statusFilter, settledSearch],
+    queryFn: ({ signal }) => api.labResults.getAll({ page, limit: preferences.rowsPerPage, status: statusFilter, search: settledSearch }, signal),
     enabled: isAllResults,
     staleTime: 30_000,
   });
   const collectionQuery = useQuery({
-    queryKey: ['lab-result-collection', selectedCollection],
-    queryFn: () => api.labResults.getCollection(selectedCollection as ResultCollection),
+    queryKey: ['lab-result-collection', selectedCollection, page, preferences.rowsPerPage, statusFilter, settledSearch],
+    queryFn: ({ signal }) => api.labResults.getCollectionPage(selectedCollection as ResultCollection, { page, limit: preferences.rowsPerPage, status: statusFilter, search: settledSearch }, signal),
     enabled: !isAllResults && !!activeGroup,
+    staleTime: 30_000,
+  });
+  const countsQuery = useQuery({
+    queryKey: ['lab-results', 'counts', selectedCollection],
+    queryFn: ({ signal }) => api.labResults.getCounts(isAllResults ? undefined : selectedCollection as ResultCollection, signal),
+    enabled: isAllResults || !!activeGroup,
+    staleTime: 30_000,
+  });
+  const resultDetailQuery = useQuery({
+    queryKey: ['lab-results', 'detail', selectedCollection, selectedResultId],
+    queryFn: ({ signal }) => api.labResults.getCollectionRecord(selectedCollection as ResultCollection, selectedResultId!, signal),
+    enabled: !isAllResults && !!activeGroup && !!selectedResultId,
     staleTime: 30_000,
   });
   const encountersQuery = useEncounters({ page: 1, limit: 100 });
   const patientsQuery = usePatients({ limit: 100 });
-  const rows = collectionQuery.data ?? [];
+  const rows = collectionQuery.data?.data ?? [];
   const allRows = allResultsQuery.data?.data ?? [];
 
   const patientNames = useMemo(() => new Map((patientsQuery.data?.data ?? []).map((patient) => [
@@ -112,39 +120,37 @@ export function LabResultsManager() {
   function getResultPatient(row: ResultRow | LabResult) {
     let patientId = '';
     if ('patient_id' in row) {
+      if (row.patient_id && typeof row.patient_id === 'object') {
+        const patient = row.patient_id as { first_name?: string; last_name?: string };
+        const name = `${patient.first_name ?? ''} ${patient.last_name ?? ''}`.trim();
+        if (name) return name;
+      }
       patientId = patientIdFromEncounter(row.patient_id);
     } else {
+      const encounter = (row as ResultRow).encounter;
+      if (encounter && typeof encounter === 'object' && 'patient' in encounter) {
+        const linkedPatient = encounter.patient as { first_name?: string; last_name?: string } | null;
+        const name = linkedPatient && `${linkedPatient.first_name ?? ''} ${linkedPatient.last_name ?? ''}`.trim();
+        if (name) return name;
+      }
       const encounterId = patientIdFromEncounter((row as ResultRow).encounter);
       patientId = patientIdByEncounter.get(encounterId) ?? '';
     }
     return patientNames.get(patientId) ?? (patientsQuery.isLoading || encountersQuery.isLoading ? 'Loading patient...' : 'Unknown patient');
   }
 
-  function rowProgress(row: ResultRow | LabResult) {
-    return 'Status' in row ? row.Status : row.status;
-  }
-
   const viewedRows: Array<ResultRow | LabResult> = isAllResults ? allRows : rows;
-  const inProgressCount = viewedRows.filter((row) => progressLabel(rowProgress(row)) === 'In Progress').length;
-  const withResultsCount = viewedRows.filter((row) => progressLabel(rowProgress(row)) === 'With Results').length;
-  const statusMatches = (value: unknown) => statusFilter === 'all'
-    || (statusFilter === 'in_progress' && progressLabel(value) === 'In Progress')
-    || (statusFilter === 'with_results' && progressLabel(value) === 'With Results');
-  const statusRows = viewedRows.filter((row) => statusMatches(rowProgress(row)));
-  const searchableRows = resultSearch.trim()
-    ? statusRows.filter((row) => {
-        const haystack = [getResultPatient(row), ...Object.values(row).map(displayValue)].join(' ').toLowerCase();
-        return haystack.includes(resultSearch.toLowerCase());
-      })
-    : statusRows;
+  const inProgressCount = countsQuery.data?.inProgress ?? 0;
+  const withResultsCount = countsQuery.data?.withResults ?? 0;
+  const resultTotal = isAllResults ? allResultsQuery.data?.total ?? 0 : collectionQuery.data?.total ?? 0;
   const pageSize = preferences.rowsPerPage;
-  const totalPages = Math.max(1, Math.ceil(searchableRows.length / pageSize));
-  const visibleRows = searchableRows.slice((page - 1) * pageSize, page * pageSize);
-  const selectedRow = rows.find((row) => String(row.id) === selectedResultId) ?? null;
+  const totalPages = Math.max(1, Math.ceil(resultTotal / pageSize));
+  const visibleRows = viewedRows;
+  const selectedRow = resultDetailQuery.data ?? rows.find((row) => String(row.id) === selectedResultId) ?? null;
   const selectedFields = activeGroup?.fields.filter((field) => field.name !== 'encounter') ?? [];
   const isLoading = isAllResults ? allResultsQuery.isLoading : collectionQuery.isLoading;
   const error = isAllResults ? allResultsQuery.error : collectionQuery.error;
-  const recordCount = isAllResults ? allResultsQuery.data?.total ?? 0 : rows.length;
+  const recordCount = countsQuery.data?.total ?? resultTotal;
 
   return (
     <div className="space-y-5">
@@ -200,7 +206,7 @@ export function LabResultsManager() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div className="relative w-full max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={resultSearch} onChange={(event) => { setResultSearch(event.target.value); setPage(1); }} placeholder="Search patients or result values" aria-label="Search results" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-400" />
+              <input value={resultSearch} onChange={(event) => { setResultSearch(event.target.value); setPage(1); }} placeholder="Search patient, test type, or remarks" aria-label="Search results" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-400" />
             </div>
             <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400"><CalendarClock className="h-3.5 w-3.5" />Live EHR records</span>
           </div>
@@ -209,7 +215,7 @@ export function LabResultsManager() {
               <p role="alert" className="p-8 text-center text-sm text-red-600">{isAllResults ? 'Unable to read lab result collections from the EHR.' : `Unable to read ${activeGroup?.collection} from the EHR.`}</p>
           ) : isLoading ? (
             <div className="space-y-3 p-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}</div>
-          ) : searchableRows.length === 0 ? (
+          ) : visibleRows.length === 0 ? (
             <div className="flex flex-1 items-center justify-center p-8"><EmptyState icon={FlaskConical} title={isAllResults ? 'No results match this status' : 'No results in this collection'} description={isAllResults ? 'Try another progress filter or search term.' : 'Add a result record here. It will be saved to this EHR collection.'} /></div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
@@ -229,7 +235,7 @@ export function LabResultsManager() {
                   return <tr key={`${result.result_collection}-${result.id}`} onClick={() => { setSelectedCollection(targetCollection); setSelectedResultId(result.id); setPage(1); }} onKeyDown={(event) => { if (event.key === 'Enter') { setSelectedCollection(targetCollection); setSelectedResultId(result.id); setPage(1); } }} tabIndex={0} className={`cursor-pointer outline-none transition-colors hover:bg-blue-50/50 focus-visible:bg-blue-50/70 ${selected ? 'bg-blue-50/60' : ''}`}>
                     <td className="px-5 py-3.5 text-xs font-medium text-slate-800">{getResultPatient(result)}</td>
                     <td className="px-4 py-3.5 text-xs font-medium text-slate-700">{label}</td>
-                    <td className="px-4 py-3.5 text-xs text-slate-500">{result.collected_date ? formatDate(result.collected_date) : '—'}</td>
+                    <td className="px-4 py-3.5 text-xs text-slate-500">{result.requested_date ? formatDate(result.requested_date) : '—'}</td>
                     <td className="px-4 py-3.5 text-xs text-slate-500">{result.collected_date ? formatDate(result.collected_date) : '—'}</td>
                     <td className="px-4 py-3.5"><ProgressPill value={result.status} /></td>
                   </tr>;
@@ -251,7 +257,7 @@ export function LabResultsManager() {
                 })}</tbody>
               </table>}
               <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
-                <p className="text-[11px] text-slate-500">{searchableRows.length} matching results</p>
+                <p className="text-[11px] text-slate-500">{resultTotal} matching results</p>
                 <div className="flex gap-1.5">
                   <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1} className="rounded-md border border-slate-200 px-3 py-1.5 text-[11px] disabled:opacity-40">Previous</button>
                   <span className="px-2 py-1.5 text-[11px] text-slate-500">{page} / {totalPages}</span>
@@ -272,7 +278,11 @@ export function LabResultsManager() {
         encountersLoading={encountersQuery.isLoading}
         getPatientName={(patient) => patientLabel(patient, patientNames, patientsQuery.isLoading)}
         onOpenChange={setCreateOpen}
-        onSaved={() => queryClient.invalidateQueries({ queryKey: ['lab-result-collection', activeGroup.collection] })}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['lab-result-collection', activeGroup.collection] });
+          queryClient.invalidateQueries({ queryKey: ['lab-results'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        }}
       />}
     </div>
   );

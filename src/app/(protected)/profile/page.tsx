@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MyInterclinicShares } from '@/components/patients/MyInterclinicShares';
+import { UserTwoFactorSetting } from '@/components/settings/UserTwoFactorSetting';
 import { CurrentUser } from '@/types';
 
 export default function ProfilePage() {
@@ -43,6 +44,7 @@ function ProfileContent({ user, updateProfile }: { user: CurrentUser; updateProf
     <div className="space-y-5">
       <PageHeader title="Profile" description="Personal account information from the EHR." />
       {String(user.roleName).trim().toLowerCase() === 'patient' && <MyInterclinicShares />}
+      <UserTwoFactorSetting />
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center gap-4 border-b border-slate-100 px-5 py-5">

@@ -1,11 +1,13 @@
 'use client';
 
-import { DragEvent, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, GripVertical, MonitorCog, Palette, Rows3, RotateCcw, Route } from 'lucide-react';
+import { DragEvent, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowDown, ArrowUp, GripVertical, MonitorCog, Palette, Rows3, RotateCcw, Route, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { AppPreferences, DEFAULT_PREFERENCES, usePreferences } from '@/lib/auth/PreferencesProvider';
 import { NAV_GROUPS } from '@/components/layout/AppSidebar';
 import { toast } from 'sonner';
+import { AdminAccessPolicySection, requestAdminAccessData } from '@/components/settings/AdminAccessPolicySection';
 
 const LANDING_PAGES = [
   { value: '/dashboard', label: 'Dashboard' },
@@ -26,13 +28,18 @@ function rgbToHex(red: number, green: number, blue: number) {
 
 export default function SettingsPage() {
   const { preferences, savePreferences } = usePreferences();
-  const [draft, setDraft] = useState<AppPreferences>(preferences);
+  return <SettingsContent key={JSON.stringify(preferences)} preferences={preferences} savePreferences={savePreferences} />;
+}
+
+function SettingsContent({ preferences, savePreferences }: { preferences: AppPreferences; savePreferences: (preferences: AppPreferences) => void }) {
+  const adminAccessQuery = useQuery({ queryKey: ['admin-access-policies'], queryFn: requestAdminAccessData, staleTime: 15_000 });
+  const [activeSection, setActiveSection] = useState<'customization' | 'access-policies'>('customization');
+  const [draft, setDraft] = useState<AppPreferences>(() => preferences);
   const [draggedHref, setDraggedHref] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [red, green, blue] = hexToRgb(draft.accentColor);
   const dirty = JSON.stringify(draft) !== JSON.stringify(preferences);
-
-  useEffect(() => setDraft(preferences), [preferences]);
+  const isAdministrator = !!adminAccessQuery.data && !adminAccessQuery.error;
 
   function updateDraft(changes: Partial<AppPreferences>) {
     setDraft((current) => ({ ...current, ...changes }));
@@ -84,15 +91,29 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Settings" description="Customize your EHR workspace. Changes take effect after you save." actions={
+      <PageHeader title="Settings" description="Customize your workspace and manage EHR access policies." actions={activeSection === 'customization' ? (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={resetDraft} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"><RotateCcw className="h-3.5 w-3.5" />Reset draft</button>
           <button type="button" onClick={save} disabled={!dirty} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Save Changes</button>
         </div>
-      } />
+      ) : undefined} />
 
-      {dirty && <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">You have unsaved settings changes.</p>}
-      {saveError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">{saveError}</p>}
+      {activeSection === 'customization' && dirty && <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">You have unsaved settings changes.</p>}
+      {activeSection === 'customization' && saveError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">{saveError}</p>}
+
+      <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 lg:h-fit lg:flex-col">
+          <p className="hidden px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 lg:block">Settings</p>
+          <button type="button" onClick={() => setActiveSection('customization')} aria-current={activeSection === 'customization' ? 'page' : undefined} className={`flex flex-none items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition-colors lg:w-full ${activeSection === 'customization' ? 'bg-blue-50 text-blue-800' : 'text-slate-600 hover:bg-slate-50'}`}><SlidersHorizontal className="h-4 w-4" />Customization</button>
+          {isAdministrator && <button type="button" onClick={() => setActiveSection('access-policies')} aria-current={activeSection === 'access-policies' ? 'page' : undefined} className={`flex flex-none items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition-colors lg:w-full ${activeSection === 'access-policies' ? 'bg-violet-50 text-violet-800' : 'text-slate-600 hover:bg-slate-50'}`}><ShieldCheck className="h-4 w-4" />EHR Roles & Access Policies</button>}
+        </nav>
+
+        <main className="min-w-0 space-y-5">
+        {activeSection === 'customization' ? <>
+      <div className="flex items-center gap-3 border-b border-slate-200 pb-3 pt-1">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><SlidersHorizontal className="h-4 w-4" /></span>
+        <div><h2 className="text-sm font-semibold text-slate-900">Customization</h2><p className="mt-0.5 text-xs text-slate-500">Personalize how your workspace looks and behaves.</p></div>
+      </div>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
@@ -166,6 +187,9 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-xs leading-relaxed text-slate-500">Unsaved choices do not take effect until saved. Preferences stay in this browser; EHR and patient data are not copied to settings.</p>
         <button type="button" onClick={save} disabled={!dirty} className="flex-none rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Save Changes</button>
+      </div>
+        </> : isAdministrator ? <AdminAccessPolicySection /> : null}
+        </main>
       </div>
     </div>
   );

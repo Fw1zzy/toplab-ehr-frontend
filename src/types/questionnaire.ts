@@ -1,15 +1,36 @@
-import { Patient } from './patient';
-import { Encounter } from './encounter';
+export type QuestionnaireValue = string | number | boolean | string[] | null;
+
+export interface QuestionnaireField {
+  name: string;
+  label: string;
+  group: string;
+  type: string;
+  interface: string | null;
+  required: boolean;
+  readonly: boolean;
+  maxLength: number | null;
+  placeholder: string;
+  choices: Array<{ label: string; value: string }>;
+}
+
+export interface QuestionnaireSchema {
+  fields: QuestionnaireField[];
+  groups: Array<{ id: string; label: string }>;
+}
+
+export interface QuestionnairePatient {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
 
 export interface QuestionnaireResponse {
   id: string;
-  date_created: string;
+  patient: QuestionnairePatient;
+  status: 'draft' | 'published' | 'archived';
+  is_finalized: boolean;
+  date_created: string | null;
   date_updated: string | null;
-  patient_id: string | Patient;
-  encounter_id: string | Encounter | null;
-  questionnaire_id: string | null;
-  questionnaire_name: string | null;
-  answers: Record<string, unknown>;
-  status: 'draft' | 'completed';
-  submitted_at: string | null;
+  submitted_at?: string | null;
+  values?: Record<string, QuestionnaireValue>;
 }

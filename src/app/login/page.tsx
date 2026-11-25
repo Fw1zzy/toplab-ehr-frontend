@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 const loginSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
+  otp: z.string().optional().refine((value) => !value || /^\d{6}$/.test(value), 'Enter the six-digit authenticator code'),
   remember: z.boolean().optional(),
 });
 
@@ -32,29 +33,56 @@ function LoginForm() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [requiresOtp, setRequiresOtp] = useState(false);
+  const [loginWarning, setLoginWarning] = useState(false);
+  const [accountBlocked, setAccountBlocked] = useState(false);
+  const [retrySeconds, setRetrySeconds] = useState(0);
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (retrySeconds <= 0) return;
+    const timer = window.setTimeout(() => setRetrySeconds((remaining) => Math.max(0, remaining - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [retrySeconds]);
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '', remember: false },
+    defaultValues: { email: '', password: '', otp: '', remember: false },
   });
 
   async function onSubmit(data: LoginForm) {
     setAuthError(null);
+    setLoginWarning(false);
+    setAccountBlocked(false);
+    setRemainingAttempts(null);
     try {
-      await login(data.email, data.password);
+      await login(data.email, data.password, data.otp || undefined);
       const safeFrom = from && from.startsWith('/') && !from.startsWith('//') && from !== '/' && from !== '/login'
         ? from
         : null;
       const destination = safeFrom ?? preferences.defaultLanding;
       router.replace(destination);
     } catch (err) {
-      setAuthError(
-        err instanceof Error ? err.message : 'Authentication failed. Please try again.',
-      );
+      const attemptError = err as Error & { retryAfterSeconds?: number; warning?: boolean; blocked?: boolean; remainingAttempts?: number };
+      if (err instanceof Error && err.name === 'MfaAuthenticationError') {
+        setRequiresOtp(true);
+        setAuthError(data.otp || attemptError.warning ? err.message : null);
+        setLoginWarning(!!attemptError.warning);
+        setAccountBlocked(!!attemptError.blocked);
+        setRemainingAttempts(attemptError.remainingAttempts ?? null);
+        setRetrySeconds(attemptError.retryAfterSeconds ?? 0);
+        return;
+      }
+      setAuthError(err instanceof Error ? err.message : 'Authentication failed. Please try again.');
+      setLoginWarning(!!attemptError.warning);
+      setAccountBlocked(!!attemptError.blocked);
+      setRemainingAttempts(attemptError.remainingAttempts ?? null);
+      setRetrySeconds(attemptError.retryAfterSeconds ?? 0);
     }
   }
 
@@ -81,10 +109,10 @@ function LoginForm() {
       {authError && (
         <div
           role="alert"
-          className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3"
+          className={`mb-5 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 ${loginWarning && !accountBlocked ? 'border-amber-300 bg-amber-50' : 'border-red-200 bg-red-50'}`}
         >
-          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
-          <p className="text-xs text-red-700">{authError}</p>
+          <AlertCircle className={`mt-0.5 h-4 w-4 flex-shrink-0 ${loginWarning && !accountBlocked ? 'text-amber-600' : 'text-red-500'}`} />
+          <p className={`text-xs ${loginWarning && !accountBlocked ? 'text-amber-900' : 'text-red-700'}`}>{authError}{loginWarning && remainingAttempts != null && <span className="mt-1 block font-semibold">Warning: {remainingAttempts} failed attempt(s) remain before this account is blocked.</span>}{retrySeconds > 0 && <span className="mt-1 block font-semibold">Try again in {Math.floor(retrySeconds / 60)}:{String(retrySeconds % 60).padStart(2, '0')}.</span>}</p>
         </div>
       )}
 
@@ -151,6 +179,30 @@ function LoginForm() {
           )}
         </div>
 
+        {requiresOtp && <div>
+          <label htmlFor="otp" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600">Authenticator code</label>
+          <input
+            id="otp"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            autoFocus
+            {...register('otp')}
+            onChange={(event) => setValue('otp', event.target.value.replace(/\D/g, '').slice(0, 6), { shouldValidate: true })}
+            className={cn(
+              'h-12 w-full rounded-xl border px-3.5 text-center font-mono text-lg tracking-[0.4em] text-slate-900 outline-none transition',
+              'focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10',
+              errors.otp ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50/60',
+            )}
+            placeholder="000000"
+            aria-describedby="otp-help"
+          />
+          <p id="otp-help" className="mt-1.5 text-[11px] leading-relaxed text-slate-500">Enter the current six-digit code from your authenticator app.</p>
+          {errors.otp && <p role="alert" className="mt-1 text-xs text-red-600">{errors.otp.message}</p>}
+        </div>}
+
         {/* Remember me */}
         <div className="flex items-center gap-2">
           <input
@@ -167,7 +219,7 @@ function LoginForm() {
         {/* Submit */}
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || retrySeconds > 0 || accountBlocked}
           id="login-submit"
           className={cn(
             'flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 text-sm font-semibold text-white shadow-[0_10px_22px_-12px_rgba(29,78,216,0.85)] transition',
@@ -176,7 +228,7 @@ function LoginForm() {
           )}
         >
           {isSubmitting && <LoaderCircle className="h-4 w-4 animate-spin" />}
-          {isSubmitting ? 'Signing in...' : 'Sign in'}
+          {isSubmitting ? 'Signing in...' : accountBlocked ? 'Account blocked' : retrySeconds > 0 ? `Try again in ${Math.floor(retrySeconds / 60)}:${String(retrySeconds % 60).padStart(2, '0')}` : requiresOtp ? 'Verify and sign in' : 'Sign in'}
         </button>
       </form>
 

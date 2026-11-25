@@ -55,9 +55,9 @@ export default function PatientProfilePage() {
   const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const patientQuery = usePatient(id);
-  const labsQuery = usePatientLabResults(id);
-  const invoicesQuery = usePatientInvoices(id);
-  const encountersQuery = useEncounters({ patientId: id });
+  const labsQuery = usePatientLabResults(patientQuery.data ? id : undefined, activeTab === 'overview' || activeTab === 'laboratory');
+  const invoicesQuery = usePatientInvoices(patientQuery.data ? id : undefined, activeTab === 'overview' || activeTab === 'billing');
+  const encountersQuery = useEncounters({ patientId: id }, !!patientQuery.data && (activeTab === 'overview' || activeTab === 'encounters'));
   const companiesQuery = useCompanies();
   const historyQuery = useQuery({
     queryKey: ['interclinic-history', id],

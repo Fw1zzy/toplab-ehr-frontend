@@ -81,6 +81,13 @@ const authStorage = {
   },
 };
 let sessionRefreshPromise: Promise<CurrentUser | null> | null = null;
+let dataSession = 0;
+
+export function resetDataSession() {
+  dataSession += 1;
+  currentBranchPromise = null;
+  shareRequest = null;
+}
 
 export const likha = createLikha<CmsSchema>(apiUrl)
   .with(authentication('json', { storage: authStorage, credentials: 'include' }))
@@ -111,13 +118,16 @@ async function list<C extends keyof CmsSchema>(collection: C, params?: {
 }) {
   const limit = Math.min(params?.limit ?? 100, 100);
   const filter = { ...params?.filter } as Record<string, unknown>;
-  return likha.request(readItems(collection, {
+  const session = dataSession;
+  const rows = await likha.request(readItems(collection, {
     filter: Object.keys(filter).length ? filter : undefined,
     limit,
     ...(params?.offset ? { offset: params.offset } : {}),
     sort: params?.sort as never,
     fields: params?.fields as never,
   }));
+  if (session !== dataSession) throw new Error('The signed-in account changed.');
+  return rows;
 }
 
 async function listAll<C extends keyof CmsSchema>(collection: C, options?: {
@@ -127,13 +137,64 @@ async function listAll<C extends keyof CmsSchema>(collection: C, options?: {
 }) {
   const all: CmsRecord[] = [];
   const pageSize = 100;
-  while (all.length < 10000) {
-    const rows = await list(collection, { ...options, limit: pageSize, offset: all.length });
+  while (true) {
+    const rows = await list(collection, { ...options, sort: options?.sort ?? ['id'], limit: pageSize, offset: all.length });
     const batch = (rows ?? []) as CmsRecord[];
     all.push(...batch);
     if (batch.length < pageSize) break;
   }
   return all;
+}
+
+type ItemQuery = { filter?: Record<string, unknown>; fields?: string[]; sort?: string[]; limit?: number; offset?: number };
+
+async function requestItems<T>(collection: keyof CmsSchema, query: Record<string, unknown>, signal?: AbortSignal) {
+  const session = dataSession;
+  const token = await likha.getToken();
+  if (!token || session !== dataSession) throw new Error('Sign in again to load EHR records.');
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) params.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+  }
+  const response = await fetch(`${apiUrl}/items/${collection}?${params}`, {
+    headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal,
+  });
+  const body = await response.json();
+  if (session !== dataSession) throw new Error('The signed-in account changed.');
+  if (!response.ok) throw Object.assign(new Error(body.errors?.[0]?.message ?? 'Unable to load EHR records.'), { status: response.status });
+  return body.data as T;
+}
+
+async function itemRows(collection: keyof CmsSchema, query: ItemQuery, signal?: AbortSignal) {
+  return requestItems<CmsRecord[]>(collection, {
+    ...query, fields: query.fields?.join(','), sort: query.sort?.join(','),
+  }, signal);
+}
+
+async function aggregateValue(collection: keyof CmsSchema, filter: Record<string, unknown>, operation: 'count' | 'sum' = 'count', field = 'id', signal?: AbortSignal) {
+  const rows = await requestItems<Array<Record<string, Record<string, string | number>>>>(collection, {
+    filter, aggregate: { [operation]: [field] },
+  }, signal);
+  return Number(rows[0]?.[operation]?.[field] ?? 0);
+}
+
+async function itemPage(collection: keyof CmsSchema, query: ItemQuery, page?: number, limit?: number, signal?: AbortSignal) {
+  // Callers without page bounds (e.g. exports) retain complete-list behavior.
+  if (page === undefined && limit === undefined) {
+    const rows: CmsRecord[] = [];
+    while (true) {
+      const batch = await itemRows(collection, { ...query, limit: 100, offset: rows.length }, signal);
+      rows.push(...batch);
+      if (batch.length < 100) return { data: rows, total: rows.length };
+    }
+  }
+  const size = Math.max(1, Math.floor(limit ?? 10));
+  const offset = (Math.max(1, page ?? 1) - 1) * size;
+  const [data, total] = await Promise.all([
+    itemRows(collection, { ...query, limit: size, offset }, signal),
+    aggregateValue(collection, query.filter ?? {}, 'count', 'id', signal),
+  ]);
+  return { data, total };
 }
 
 const currentBranchCode = (process.env.NEXT_PUBLIC_LIKHA_BRANCH_CODE || 'baguio').trim().toLowerCase();
@@ -154,29 +215,32 @@ async function getCurrentBranch() {
   return currentBranchPromise;
 }
 
-async function getAccessiblePatientIds(scope: 'patient' | 'encounter' | 'laboratory' | 'invoice' = 'patient') {
+let shareRequest: { session: number; promise: Promise<CmsRecord[]> } | null = null;
+
+async function patientAccessFilter(scope: 'patient' | 'encounter' | 'laboratory' | 'invoice') {
+  const session = dataSession;
   const branch = await getCurrentBranch();
-  const [owned, grants] = await Promise.all([listAll('patient', {
-    fields: ['id'],
-    filter: { custodian_branch: { _eq: String(branch.id) } },
-  }), listAll('interclinic_consent', {
-    fields: ['local_patient', 'scope', 'access_expires_at'],
-    filter: {
-      destination_branch: { _eq: String(branch.id) },
-      effect: { _eq: 'view_only' },
-      status: { _eq: 'approved' },
-    },
-  })]);
-  const allowed = new Set((owned ?? []).map((row) => String(row.id)));
-  for (const row of grants ?? []) {
-    const grant = row as CmsRecord;
+  if (session !== dataSession) throw new Error('The signed-in account changed.');
+  if (!shareRequest || shareRequest.session !== session) {
+    const request = { session, promise: listAll('interclinic_consent', {
+      fields: ['local_patient', 'scope', 'access_expires_at'],
+      filter: { destination_branch: { _eq: String(branch.id) }, effect: { _eq: 'view_only' }, status: { _eq: 'approved' } },
+    }) };
+    shareRequest = request;
+    // Only deduplicate concurrent work; never cache authorization after completion.
+    void request.promise.finally(() => { if (shareRequest === request) shareRequest = null; }).catch(() => undefined);
+  }
+  const grants = await shareRequest.promise;
+  if (session !== dataSession) throw new Error('The signed-in account changed.');
+  const sharedIds: string[] = [];
+  for (const grant of grants) {
     const scopes = value(grant, 'scope');
     const patientId = relationId(grant.local_patient);
     const expiresAt = text(grant, 'access_expires_at');
     const unexpired = !expiresAt || new Date(expiresAt).getTime() > Date.now();
-    if (patientId && unexpired && Array.isArray(scopes) && scopes.includes(scope)) allowed.add(patientId);
+    if (patientId && unexpired && Array.isArray(scopes) && scopes.includes(scope)) sharedIds.push(patientId);
   }
-  return allowed;
+  return { _or: [{ custodian_branch: { _eq: String(branch.id) } }, { id: { _in: [...new Set(sharedIds)] } }] };
 }
 
 async function isPatientCustodian(patientId: string) {
@@ -186,8 +250,9 @@ async function isPatientCustodian(patientId: string) {
 }
 
 async function hasPatientScopeAccess(patientId: string, scope: 'patient' | 'encounter' | 'laboratory' | 'invoice') {
-  const accessibleIds = await getAccessiblePatientIds(scope);
-  return accessibleIds.has(patientId);
+  const filter = await patientAccessFilter(scope);
+  const rows = await itemRows('patient', { fields: ['id'], limit: 1, filter: { _and: [filter, { id: { _eq: patientId } }] } });
+  return rows.length > 0;
 }
 
 function mapPatient(row: CmsRecord): Patient {
@@ -217,6 +282,13 @@ function mapPatient(row: CmsRecord): Patient {
     avatar_id: user ? relationId(user.avatar) : null,
   };
 }
+
+const encounterFields = [
+  'id', 'encounter_date', 'patient.id', 'patient.first_name', 'patient.last_name',
+  'status', 'encounter_type', 'company', 'corporate_request', 'payment_route',
+  'service.catalog_service_id.id', 'service.catalog_service_id.name',
+  'service.catalog_service_id.department', 'service.saved_price',
+];
 
 function mapEncounter(row: CmsRecord): Encounter {
   const cmsStatus = (text(row, 'status') ?? '').toLowerCase();
@@ -302,6 +374,15 @@ function userFromToken(accessToken: string, email: string): CurrentUser {
   };
 }
 
+function isInvalidUserOtp(error: unknown) {
+  const value = error as { message?: unknown; errors?: Array<{ message?: unknown; extensions?: { code?: unknown } }> };
+  const messages = [
+    value?.message,
+    ...(Array.isArray(value?.errors) ? value.errors.flatMap((item) => [item.message, item.extensions?.code]) : []),
+  ].filter((item): item is string => typeof item === 'string').join(' ');
+  return /invalid user otp|invalid.{0,30}(otp|one.time password)|(?:otp|one.time password).{0,30}(required|invalid)/i.test(messages);
+}
+
 export const likhaAuth = {
   hasAccessToken() {
     return Boolean(inMemoryAuth?.access_token && (inMemoryAuth.expires_at ?? 0) > Date.now());
@@ -348,22 +429,118 @@ export const likhaAuth = {
       return this.mapUser(user);
     }
   },
-  async login(email: string, password: string) {
+  async login(email: string, password: string, otp?: string) {
     if (sessionRefreshPromise) await sessionRefreshPromise;
+    const loginSession = dataSession;
     authStorage.set(null);
     // Preserve the stored email's case; some EHR deployments use case-sensitive comparisons.
     const normalizedEmail = email.trim();
     try {
-      const session = await likha.login({ email: normalizedEmail, password }, { mode: 'json' });
-      if (!session.access_token) throw new Error('The EHR login response did not include an access token.');
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, password, ...(otp ? { otp } : {}) }),
+        cache: 'no-store',
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const loginError = new Error(result.error ?? 'Authentication failed. Please try again.') as Error & {
+          failedAttempts?: number;
+          remainingAttempts?: number;
+          retryAfterSeconds?: number;
+          warning?: boolean;
+          blocked?: boolean;
+        };
+        loginError.failedAttempts = result.failedAttempts;
+        loginError.remainingAttempts = result.remainingAttempts;
+        loginError.retryAfterSeconds = result.retryAfterSeconds;
+        loginError.warning = result.warning;
+        loginError.blocked = result.blocked;
+        if (result.blocked) loginError.name = 'LoginBlockedError';
+        else if (isInvalidUserOtp(result.error)) loginError.name = 'MfaAuthenticationError';
+        else if (result.retryAfterSeconds) loginError.name = 'LoginCooldownError';
+        else if (result.warning) loginError.name = 'LoginWarningError';
+        else if (typeof result.failedAttempts === 'number') loginError.name = 'LoginFailureError';
+        throw loginError;
+      }
+      const session = result.data as { access_token?: string; refresh_token?: string; expires?: number } | undefined;
+      if (!session?.access_token) throw new Error('The EHR login response did not include an access token.');
+      if (loginSession !== dataSession) throw new Error('The sign-in request was superseded by another session.');
+      authStorage.set({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token ?? null,
+        expires: session.expires ?? null,
+        expires_at: session.expires ? Date.now() + session.expires : null,
+      });
       return { user: userFromToken(session.access_token, normalizedEmail) };
     } catch (error) {
-      authStorage.set(null);
+      if (loginSession === dataSession) authStorage.set(null);
+      if (!(error instanceof Error && ['LoginBlockedError', 'LoginCooldownError', 'LoginWarningError'].includes(error.name)) && isInvalidUserOtp(error)) {
+        const source = error as Error & { failedAttempts?: number; remainingAttempts?: number; retryAfterSeconds?: number; warning?: boolean; blocked?: boolean };
+        const mfaError = new Error('Authenticator code is required or invalid.') as Error & { failedAttempts?: number; remainingAttempts?: number; retryAfterSeconds?: number; warning?: boolean; blocked?: boolean };
+        mfaError.name = 'MfaAuthenticationError';
+        mfaError.failedAttempts = source.failedAttempts;
+        mfaError.remainingAttempts = source.remainingAttempts;
+        mfaError.retryAfterSeconds = source.retryAfterSeconds;
+        mfaError.warning = source.warning;
+        mfaError.blocked = source.blocked;
+        throw mfaError;
+      }
       throw error;
     }
   },
+  async verifyCredentials(password: string, otp?: string) {
+    const token = await likha.getToken();
+    if (!token) throw new Error('Sign in again before confirming your password.');
+    const response = await fetch('/api/auth/verify-credentials', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, ...(otp ? { otp } : {}) }),
+      cache: 'no-store',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error ?? 'Password or authenticator code could not be verified.');
+    return true;
+  },
+  async generateTwoFactorSecret(password: string) {
+    const token = await likha.getToken();
+    if (!token) throw new Error('Sign in again before setting up two-factor authentication.');
+    const response = await fetch('/api/likha/users/me/tfa/generate', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }), cache: 'no-store',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.errors?.[0]?.message ?? 'Unable to start authenticator setup.');
+    return result.data as { secret: string; otpauth_url: string };
+  },
+  async enableTwoFactor(secret: string, otp: string) {
+    const token = await likha.getToken();
+    if (!token) throw new Error('Sign in again before finishing authenticator setup.');
+    const response = await fetch('/api/likha/users/me/tfa/enable', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret, otp }), cache: 'no-store',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.errors?.[0]?.message ?? 'The authenticator code could not be verified.');
+    return true;
+  },
+  async disableTwoFactor(otp: string) {
+    const token = await likha.getToken();
+    if (!token) throw new Error('Sign in again before disabling two-factor authentication.');
+    const response = await fetch('/api/likha/users/me/tfa/disable', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp }), cache: 'no-store',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.errors?.[0]?.message ?? 'The authenticator code could not be verified.');
+    return true;
+  },
   async logout() {
     try {
+      if (sessionRefreshPromise) await sessionRefreshPromise;
       await likha.logout({ mode: 'json' });
     } finally {
       authStorage.set(null);
@@ -488,32 +665,31 @@ async function savePatientRecord(data: Partial<Patient>, photo?: File, id?: stri
 }
 
 export const likhaPatients = {
-  async getAll(params?: { search?: string; page?: number; limit?: number }) {
+  async getAll(params?: { search?: string; page?: number; limit?: number }, signal?: AbortSignal) {
     const branch = await getCurrentBranch();
-    const [ownedRows, sharedIds] = await Promise.all([
-      listAll('patient', { filter: { custodian_branch: { _eq: String(branch.id) } } }),
-      getAccessiblePatientIds('patient'),
-    ]);
-    const owned = ownedRows ?? [];
-    const ownedIds = new Set(owned.map((row) => String(row.id)));
-    const missingSharedIds = [...sharedIds].filter((id) => !ownedIds.has(id));
-    const sharedRows = missingSharedIds.length
-      ? await listAll('patient', { filter: { id: { _in: missingSharedIds } } })
-      : [];
-    const data = [...owned, ...(sharedRows ?? [])].map((row) => {
+    const access = await patientAccessFilter('patient');
+    const terms = params?.search?.trim().split(/\s+/).filter(Boolean) ?? [];
+    const result = await itemPage('patient', {
+      fields: ['id', 'first_name', 'middle_name', 'last_name', 'suffixes', 'date_of_birth', 'sex', 'mobile_number', 'email', 'company', 'global_patient_id', 'origin_branch', 'custodian_branch', 'custody_state'],
+      filter: { _and: [access, ...terms.map((term) => ({ _or: [
+        { first_name: { _icontains: term } }, { last_name: { _icontains: term } },
+        { mobile_number: { _icontains: term } },
+        ...(/^[0-9a-f-]{36}$/i.test(term) ? [{ id: { _eq: term } }] : []),
+      ] }))] },
+      sort: ['last_name', 'first_name', 'id'],
+    }, params?.page, params?.limit, signal);
+    const data = result.data.map((row) => {
       const patient = mapPatient(row as CmsRecord);
-      return { ...patient, interclinic_access: !ownedIds.has(String(row.id)) };
-    }).filter((patient) =>
-      !params?.search || `${patient.first_name} ${patient.last_name} ${patient.patient_id} ${patient.contact_number ?? ''}`.toLowerCase().includes(params.search.toLowerCase()),
-    );
-    return paginated(data, data.length, params?.page, params?.limit);
+      return { ...patient, interclinic_access: patient.custodian_branch_id !== String(branch.id) };
+    });
+    return { data, total: result.total };
   },
-  async getOne(id: string) {
+  async getOne(id: string, signal?: AbortSignal) {
     try {
       const token = await likha.getToken();
       if (!token) return null;
       const response = await fetch(`/api/patients/${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+        headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal,
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) return null;
@@ -525,7 +701,7 @@ export const likhaPatients = {
     const query = search.trim();
     if (query.length < 2) return [];
     const branch = await getCurrentBranch();
-    const rows = await listAll('patient', {
+    const rows = await itemRows('patient', {
       filter: {
         custodian_branch: { _neq: String(branch.id) },
         _or: [
@@ -534,8 +710,12 @@ export const likhaPatients = {
         ],
       },
       fields: ['id', 'first_name', 'last_name'],
+      sort: ['last_name', 'first_name', 'id'], limit: Math.max(1, Math.min(limit, 50)),
     });
-    const accessible = await getAccessiblePatientIds('patient');
+    const access = await patientAccessFilter('patient');
+    const visibleRows = rows.length ? await itemRows('patient', { fields: ['id'], limit: 50,
+      filter: { _and: [access, { id: { _in: rows.map((row) => row.id) } }] } }) : [];
+    const accessible = new Set(visibleRows.map((row) => row.id));
     return rows
       .map((row) => ({
         id: String(row.id),
@@ -553,24 +733,31 @@ export const likhaPatients = {
 };
 
 export const likhaEncounters = {
-  async getAll(params?: { patientId?: string; status?: string; page?: number; limit?: number }) {
-    const allowedPatients = await getAccessiblePatientIds('encounter');
-    if (params?.patientId && !allowedPatients.has(params.patientId)) return paginated([], 0, params.page, params.limit);
-    const result = await listAll('encounter', {
-      sort: ['-encounter_date'],
-      fields: ['*', 'service.encounter_id', 'service.catalog_service_id.id', 'service.catalog_service_id.name', 'service.catalog_service_id.department', 'service.saved_price'],
-    });
-    const data = (result ?? []).map((row) => mapEncounter(row as CmsRecord)).filter((encounter) =>
-      allowedPatients.has(relationId(encounter.patient_id) ?? '') &&
-      (!params?.patientId || relationId(encounter.patient_id) === params.patientId) &&
-      (!params?.status || encounter.status === params.status),
-    );
-    return paginated(data, data.length, params?.page, params?.limit);
+  async getAll(params?: { patientId?: string; status?: string; page?: number; limit?: number; dateFrom?: string; dateTo?: string; search?: string; kind?: string }, signal?: AbortSignal) {
+    const access = await patientAccessFilter('encounter');
+    const filters: Record<string, unknown>[] = [{ patient: access }];
+    if (params?.patientId) filters.push({ patient: { _eq: params.patientId } });
+    if (params?.status) filters.push({ status: params.status === 'completed' ? { _eq: 'Completed' }
+      : params.status === 'in_progress' ? { _in: ['not_completed', 'In Progress'] } : { _nin: ['Completed', 'not_completed', 'In Progress'] } });
+    if (params?.dateFrom || params?.dateTo) filters.push({ encounter_date: {
+      ...(params.dateFrom ? { _gte: params.dateFrom } : {}), ...(params.dateTo ? { _lt: params.dateTo } : {}),
+    } });
+    if (params?.kind === 'outpatient') filters.push({ _or: [{ encounter_type: { _starts_with: 'OPD' } }, { encounter_type: { _null: true } }] });
+    if (params?.kind === 'corporate') filters.push({ _or: [{ encounter_type: { _starts_with: 'PEME' } }, { encounter_type: { _starts_with: 'APE' } }] });
+    for (const term of params?.search?.trim().split(/\s+/).filter(Boolean) ?? []) filters.push({ _or: [
+      { patient: { first_name: { _icontains: term } } }, { patient: { last_name: { _icontains: term } } },
+      { encounter_type: { _icontains: term } }, { service: { catalog_service_id: { name: { _icontains: term } } } },
+    ] });
+    const result = await itemPage('encounter', {
+      filter: { _and: filters }, sort: ['-encounter_date', 'id'], fields: encounterFields,
+    }, params?.page, params?.limit, signal);
+    return { data: result.data.map(mapEncounter), total: result.total };
   },
-  async getOne(id: string) {
+  async getOne(id: string, signal?: AbortSignal) {
     try {
-      const encounter = mapEncounter(await likha.request(readItem('encounter', id)) as CmsRecord);
-      return await hasPatientScopeAccess(relationId(encounter.patient_id) ?? '', 'encounter') ? encounter : null;
+      const rows = await itemRows('encounter', { fields: ['*', ...encounterFields], limit: 1,
+        filter: { _and: [{ id: { _eq: id } }, { patient: await patientAccessFilter('encounter') }] } }, signal);
+      return rows[0] ? mapEncounter(rows[0]) : null;
     }
     catch { return null; }
   },
@@ -609,6 +796,19 @@ export const likhaEncounters = {
 };
 
 export const likhaInvoices = {
+  async getSummary(signal?: AbortSignal) {
+    const rows = await requestItems<Array<{ status: string | null; count: { id: string }; sum: { total_amount: string | null } }>>('invoice', {
+      filter: { patient: await patientAccessFilter('invoice') },
+      groupBy: 'status', aggregate: { count: ['id'], sum: ['total_amount'] },
+    }, signal);
+    return rows.reduce((totals, row) => {
+      totals.total += Number(row.count.id);
+      if (row.status?.toLowerCase() === 'draft') totals.draft += Number(row.count.id);
+      if (row.status?.toLowerCase() === 'paid') totals.paidValue += Number(row.sum.total_amount ?? 0);
+      if (['issued', 'unpaid'].includes(row.status?.toLowerCase() ?? '')) totals.unpaidValue += Number(row.sum.total_amount ?? 0);
+      return totals;
+    }, { total: 0, draft: 0, paidValue: 0, unpaidValue: 0 });
+  },
   async hasOutpatientInvoiceForEncounter(encounterId: string) {
     const encounter = await likhaEncounters.getOne(encounterId);
     const patientId = encounter ? relationId(encounter.patient_id) : null;
@@ -634,23 +834,27 @@ export const likhaInvoices = {
     });
     return (invoices ?? []).some((row) => text(row as CmsRecord, 'type')?.toLowerCase() === 'outpatient');
   },
-  async getAll(params?: { patientId?: string; status?: string; page?: number; limit?: number }) {
-    const allowedPatients = await getAccessiblePatientIds('invoice');
-    if (params?.patientId && !allowedPatients.has(params.patientId)) return paginated([], 0, params.page, params.limit);
+  async getAll(params?: { patientId?: string; status?: string; page?: number; limit?: number; search?: string; type?: string }, signal?: AbortSignal) {
+    const access = await patientAccessFilter('invoice');
+    const terms = params?.search?.trim().split(/\s+/).filter(Boolean) ?? [];
     const filter = {
-      ...(params?.patientId ? { patient: { _eq: params.patientId } } : {}),
+      _and: [{ patient: access }, ...(params?.patientId ? [{ patient: { _eq: params.patientId } }] : []),
+        ...terms.map((term) => ({ _or: [
+          { patient: { first_name: { _icontains: term } } }, { patient: { last_name: { _icontains: term } } },
+          { company: { name: { _icontains: term } } }, { invoice_number: { _icontains: term } },
+        ] })),
+      ],
       ...(params?.status ? { status: { _eq: params.status } } : {}),
+      ...(params?.type ? { type: { _eq: params.type } } : {}),
     };
-    const result = await listAll('invoice', { filter });
-    const data = (result ?? []).map((row) => mapInvoice(row as CmsRecord)).filter((invoice) =>
-      allowedPatients.has(relationId(invoice.patient_id) ?? ''),
-    );
-    return paginated(data, data.length, params?.page, params?.limit);
+    const result = await itemPage('invoice', { filter, sort: ['id'], fields: ['id', 'invoice_number', 'patient.id', 'patient.first_name', 'patient.last_name', 'company', 'type', 'status', 'total_amount'] }, params?.page, params?.limit, signal);
+    return { data: result.data.map(mapInvoice), total: result.total };
   },
-  async getOne(id: string) {
+  async getOne(id: string, signal?: AbortSignal) {
     try {
-      const invoice = mapInvoice(await likha.request(readItem('invoice', id)) as CmsRecord);
-      return await hasPatientScopeAccess(relationId(invoice.patient_id) ?? '', 'invoice') ? invoice : null;
+      const rows = await itemRows('invoice', { fields: ['*', 'patient.id', 'patient.first_name', 'patient.last_name'], limit: 1,
+        filter: { _and: [{ id: { _eq: id } }, { patient: await patientAccessFilter('invoice') }] } }, signal);
+      return rows[0] ? mapInvoice(rows[0]) : null;
     }
     catch { return null; }
   },
@@ -921,16 +1125,80 @@ function resultCategory(collection: string): import('@/types').LabResult['catego
   return 'other';
 }
 
+function labSummaryFields(collection: ResultCollection) {
+  const fields = ['id', 'Status', 'encounter.id', 'encounter.patient.id', 'encounter.patient.first_name', 'encounter.patient.last_name', 'encounter.encounter_date'];
+  if (collection === 'results_covid_antigen') fields.push('Date_and_Time_of_Collection', 'Date_and_Time_of_Results', 'Remarks');
+  if (collection === 'results_clinical_chemistry' || collection === 'results_hematology_cbc') fields.push('Remarks');
+  if (collection === 'results_ecg') fields.push('Remarks_or_Recommendation');
+  return fields;
+}
+
+function mapLabResult(row: CmsRecord, collection: ResultCollection): import('@/types').LabResult | null {
+  const encounter = row.encounter && typeof row.encounter === 'object' ? row.encounter as CmsRecord : null;
+  const patientId = encounter ? relationId(encounter.patient) : null;
+  if (!patientId) return null;
+  return {
+    id: String(row.id), patient_id: encounter?.patient && typeof encounter.patient === 'object'
+      ? { id: patientId, first_name: text(encounter.patient as CmsRecord, 'first_name') ?? '', last_name: text(encounter.patient as CmsRecord, 'last_name') ?? '' }
+      : patientId, encounter_id: relationId(row.encounter),
+    test_name: collection.replace('results_', '').replace(/_/g, ' '), category: resultCategory(collection),
+    status: text(row, 'Status')?.toLowerCase() as import('@/types').LabResultStatus ?? null,
+    collected_date: text(row, 'Date_and_Time_of_Collection'),
+    requested_date: encounter ? text(encounter, 'encounter_date') : null,
+    released_date: text(row, 'Date_and_Time_of_Results'), result_collection: collection,
+    remarks: text(row, 'Remarks') ?? text(row, 'Remarks_or_Recommendation'),
+  };
+}
+
+async function labFilter(params: { patientId?: string; status?: string }, access?: Record<string, unknown>) {
+  const filters: Record<string, unknown>[] = [
+    { encounter: { patient: access ?? await patientAccessFilter('laboratory') } },
+    ...(params.patientId ? [{ encounter: { patient: { _eq: params.patientId } } }] : []),
+    ...(params.status && params.status !== 'all' ? [{ Status: params.status === 'in_progress'
+      ? { _in: ['for_encoding', 'processing', 'pending'] }
+      : params.status === 'with_results' ? { _in: ['with_results', 'completed', 'released'] } : { _eq: params.status } }] : []),
+  ];
+  return { _and: filters };
+}
+
+function labSearchFilter(filter: Record<string, unknown>, collection: ResultCollection, search?: string) {
+  const terms = search?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (!terms.length) return filter;
+  const remarkField = collection === 'results_ecg' ? 'Remarks_or_Recommendation'
+    : ['results_covid_antigen', 'results_clinical_chemistry', 'results_hematology_cbc'].includes(collection) ? 'Remarks' : null;
+  return { _and: [filter, ...terms.filter((term) => !collection.replace(/_/g, ' ').toLowerCase().includes(term.toLowerCase())).map((term) => ({ _or: [
+    { encounter: { patient: { first_name: { _icontains: term } } } },
+    { encounter: { patient: { last_name: { _icontains: term } } } },
+    ...(remarkField ? [{ [remarkField]: { _icontains: term } }] : []),
+  ] }))] };
+}
+
 export const likhaLabResults = {
+  async getCollectionRecord(collection: ResultCollection, id: string, signal?: AbortSignal) {
+    const access = await labFilter({});
+    const rows = await itemRows(collection, { fields: ['*', 'encounter.id', 'encounter.patient.id', 'encounter.patient.first_name', 'encounter.patient.last_name'],
+      filter: { _and: [access, { id: { _eq: id } }] }, limit: 1 }, signal);
+    return rows[0] ?? null;
+  },
+  async getCounts(collection?: ResultCollection, signal?: AbortSignal) {
+    const filter = await labFilter({});
+    const groups = await Promise.all((collection ? [collection] : resultCollections).map((source) =>
+      requestItems<Array<{ Status: string | null; count: { id: string } }>>(source, { filter, aggregate: { count: ['id'] }, groupBy: 'Status' }, signal),
+    ));
+    const counts = { total: 0, inProgress: 0, withResults: 0 };
+    for (const group of groups.flat()) {
+      const count = Number(group.count.id);
+      counts.total += count;
+      if (['for_encoding', 'processing', 'pending'].includes(group.Status?.toLowerCase() ?? '')) counts.inProgress += count;
+      if (['with_results', 'completed', 'released'].includes(group.Status?.toLowerCase() ?? '')) counts.withResults += count;
+    }
+    return counts;
+  },
   async getCollection(collection: ResultCollection): Promise<CmsRecord[]> {
-    const allowedPatients = await getAccessiblePatientIds('laboratory');
-    const encounters = await listAll('encounter', { fields: ['id', 'patient'] });
-    const allowedEncounterIds = new Set((encounters ?? []).flatMap((row) => {
-      const encounter = row as CmsRecord;
-      return allowedPatients.has(relationId(encounter.patient) ?? '') ? [String(encounter.id)] : [];
-    }));
-    const rows = await listAll(collection);
-    return (rows as CmsRecord[]).filter((row) => allowedEncounterIds.has(relationId(row.encounter) ?? ''));
+    return listAll(collection, { filter: await labFilter({}) });
+  },
+  async getCollectionPage(collection: ResultCollection, params: { page: number; limit: number; status?: string; search?: string }, signal?: AbortSignal) {
+    return itemPage(collection, { filter: labSearchFilter(await labFilter(params), collection, params.search), fields: ['*', 'encounter.id', 'encounter.patient.id', 'encounter.patient.first_name', 'encounter.patient.last_name'], sort: ['-encounter.encounter_date', 'id'] }, params.page, params.limit, signal);
   },
   async createInCollection(collection: ResultCollection, data: Record<string, unknown>): Promise<CmsRecord> {
     const encounterId = relationId(data.encounter);
@@ -945,90 +1213,93 @@ export const likhaLabResults = {
     const uploaded = await likha.request(uploadFiles(body));
     return String(uploaded.id);
   },
-  async getAll(params?: { patientId?: string; status?: string; category?: string; page?: number; limit?: number }): Promise<{ data: import('@/types').LabResult[]; total: number }> {
-    const allowedPatients = await getAccessiblePatientIds('laboratory');
-    if (params?.patientId && !allowedPatients.has(params.patientId)) return paginated([], 0, params.page, params.limit);
-    const [sources, encounters] = await Promise.all([
-      Promise.all(resultCollections.map(async (collection) => ({
-        collection,
-        rows: await listAll(collection),
-      }))),
-      listAll('encounter', { fields: ['id', 'patient'] }),
-    ]);
-    const patientByEncounter = new Map((encounters ?? []).map((row) => {
-      const encounter = row as CmsRecord;
-      const patientId = relationId(encounter.patient) ?? '';
-      return [String(encounter.id), allowedPatients.has(patientId) ? patientId : ''] as const;
+  async getAll(params?: { patientId?: string; status?: string; category?: string; page?: number; limit?: number; id?: string; search?: string }, signal?: AbortSignal): Promise<{ data: import('@/types').LabResult[]; total: number }> {
+    const page = Math.max(1, params?.page ?? 1);
+    const limit = Math.max(1, params?.limit ?? 10);
+    const filter = await labFilter(params ?? {});
+    if (params?.id) filter._and.push({ id: { _eq: params.id } });
+    const collections = resultCollections.filter((collection) => {
+      if (params?.category && params.category !== 'all' && resultCategory(collection) !== params.category) return false;
+      if (!params?.id) return true;
+      return collection === 'results_hematology' ? /^\d+$/.test(params.id) : /^[0-9a-f-]{36}$/i.test(params.id);
+    });
+    const sources = await Promise.all(collections.map(async (collection) => {
+      const result = await itemPage(collection, {
+        filter: labSearchFilter(filter, collection, params?.search), sort: ['-encounter.encounter_date', 'id'], fields: labSummaryFields(collection),
+      }, 1, page * limit, signal);
+      return { collection, ...result };
     }));
-    const results = sources.flatMap(({ collection, rows }) => (rows as CmsRecord[]).map((row) => {
-      const encounterId = relationId(row.encounter);
-      const statusText = text(row, 'Status')?.toLowerCase() as import('@/types').LabResultStatus | undefined;
-      return {
-        id: String(row.id),
-        patient_id: encounterId ? patientByEncounter.get(encounterId) ?? '' : '',
-        encounter_id: encounterId, test_name: collection.replace('results_', '').replace(/_/g, ' '),
-        category: resultCategory(collection),
-        status: statusText ?? null,
-        collected_date: text(row, 'Date_and_Time_of_Collection'), released_date: text(row, 'Date_and_Time_of_Results'),
-        result_collection: collection,
-        remarks: text(row, 'Remarks'),
-      } satisfies import('@/types').LabResult;
-    }));
-    const filtered = results.filter((item) =>
-      (!params?.patientId || item.patient_id === params.patientId) &&
-      (!params?.status || item.status === params.status) &&
-      (!params?.category || params.category === 'all' || item.category === params.category),
-    );
-    const page = params?.page ?? 1;
-    const limit = params?.limit ?? 10;
-    return paginated(filtered.slice((page - 1) * limit, page * limit), filtered.length);
+    // Match PostgreSQL DESC null ordering and hematology's integer primary key.
+    const results = sources.flatMap(({ collection, data }) => data.flatMap((row) => {
+      const mapped = mapLabResult(row, collection);
+      const encounter = row.encounter as CmsRecord | null;
+      return mapped ? [{ mapped, date: encounter ? text(encounter, 'encounter_date') ?? '' : '' }] : [];
+    })).sort((a, b) => ((!a.date || !b.date) && a.date !== b.date ? (!a.date ? -1 : 1) : b.date.localeCompare(a.date))
+      || a.mapped.result_collection.localeCompare(b.mapped.result_collection)
+      || (a.mapped.result_collection === 'results_hematology' ? Number(a.mapped.id) - Number(b.mapped.id) : a.mapped.id.localeCompare(b.mapped.id)));
+    return { data: results.slice((page - 1) * limit, page * limit).map((row) => row.mapped), total: sources.reduce((sum, source) => sum + source.total, 0) };
   },
-  async getOne(id: string): Promise<import('@/types').LabResult | null> {
-    const result = await this.getAll({ limit: 10000 });
+  async getOne(id: string, signal?: AbortSignal): Promise<import('@/types').LabResult | null> {
+    const result = await this.getAll({ id, limit: 1 }, signal);
     return result.data.find((item) => item.id === id) ?? null;
   },
 };
+function todayRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { dateFrom: start.toISOString(), dateTo: end.toISOString() };
+}
+
 export const likhaDashboard = {
-  async getMetrics() {
+  async getMetrics(signal?: AbortSignal) {
     const [patients, encounters, invoices, labs] = await Promise.all([
-      likhaPatients.getAll({ limit: 1000 }), likhaEncounters.getAll({ limit: 1000 }),
-      likhaInvoices.getAll({ limit: 1000 }), likhaLabResults.getAll({ limit: 10000 }),
+      patientAccessFilter('patient'), patientAccessFilter('encounter'), patientAccessFilter('invoice'), patientAccessFilter('laboratory'),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
-    const todaysEncounters = encounters.data.filter((item) => item.encounter_date.startsWith(today));
+    const range = todayRange();
+    const encounterFilter = { patient: encounters };
+    const labScope = await labFilter({ status: 'for_encoding' }, labs);
+    const [totalPatients, todayEncounters, inProgressEncounters, completedEncounters, paidInvoiceValue, pendingLabCounts] = await Promise.all([
+      aggregateValue('patient', patients, 'count', 'id', signal),
+      aggregateValue('encounter', { ...encounterFilter, encounter_date: { _gte: range.dateFrom, _lt: range.dateTo } }, 'count', 'id', signal),
+      aggregateValue('encounter', { ...encounterFilter, status: { _in: ['not_completed', 'In Progress'] } }, 'count', 'id', signal),
+      aggregateValue('encounter', { ...encounterFilter, status: { _eq: 'Completed' } }, 'count', 'id', signal),
+      aggregateValue('invoice', { patient: invoices, status: { _eq: 'paid' } }, 'sum', 'total_amount', signal),
+      Promise.all(resultCollections.map((collection) => aggregateValue(collection, labScope, 'count', 'id', signal))),
+    ]);
     return {
-      totalPatients: patients.total,
-      todayEncounters: todaysEncounters.length,
-      inProgressEncounters: encounters.data.filter((item) => item.status === 'in_progress').length,
-      completedEncounters: encounters.data.filter((item) => item.status === 'completed').length,
-      pendingLabResults: labs.data.filter((item) => item.status === 'for_encoding').length,
-      paidInvoiceValue: invoices.data.filter((item) => item.status === 'paid').reduce((sum, item) => sum + item.total_amount, 0),
+      totalPatients, todayEncounters, inProgressEncounters, completedEncounters, paidInvoiceValue,
+      pendingLabResults: pendingLabCounts.reduce((sum, count) => sum + count, 0),
     };
   },
-  async getTodayEncounters() {
-    const rows = await likhaEncounters.getAll({ limit: 1000 });
-    const today = new Date().toISOString().slice(0, 10);
-    return rows.data.filter((item) => item.encounter_date.startsWith(today));
+  async getTodayEncounters(signal?: AbortSignal) {
+    const access = await patientAccessFilter('encounter');
+    const range = todayRange();
+    const rows = await itemRows('encounter', {
+      filter: { patient: access, encounter_date: { _gte: range.dateFrom, _lt: range.dateTo } },
+      fields: encounterFields, sort: ['encounter_date', 'id'], limit: 20,
+    }, signal);
+    return rows.map(mapEncounter);
   },
-  async getQueue() {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    const rows = await listAll('encounter', {
+  async getQueue(signal?: AbortSignal) {
+    const range = todayRange();
+    const access = await patientAccessFilter('encounter');
+    const result = await itemPage('encounter', {
       filter: {
         status: { _eq: 'not_completed' },
-        encounter_date: { _gte: start.toISOString(), _lt: end.toISOString() },
+        patient: access,
+        encounter_date: { _gte: range.dateFrom, _lt: range.dateTo },
       },
       sort: ['encounter_date'],
-      fields: ['*', 'service.encounter_id', 'service.catalog_service_id.id', 'service.catalog_service_id.name', 'service.catalog_service_id.department', 'service.saved_price'],
-    });
-    return rows.map((row) => mapEncounter(row as CmsRecord))
+      fields: encounterFields,
+    }, undefined, undefined, signal);
+    return result.data.map((row) => mapEncounter(row as CmsRecord))
       .filter((encounter) => encounter.status === 'in_progress')
       .sort((left, right) => left.encounter_date.localeCompare(right.encounter_date));
   },
-  async getRecentLabResults(): Promise<import('@/types').LabResult[]> {
-    return (await likhaLabResults.getAll({ limit: 5 })).data;
+  async getRecentLabResults(signal?: AbortSignal): Promise<import('@/types').LabResult[]> {
+    return (await likhaLabResults.getAll({ limit: 5 }, signal)).data;
   },
 };
 

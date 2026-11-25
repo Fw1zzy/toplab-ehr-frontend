@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
-import { useInvoices } from '@/lib/queries/useBillingInventory';
+import { useInvoices, useInvoiceSummary } from '@/lib/queries/useBillingInventory';
 import { usePatients } from '@/lib/queries/usePatients';
 import { useCompanies } from '@/lib/queries/useCompanies';
 import { formatCurrency } from '@/lib/utils';
@@ -36,30 +36,20 @@ export default function BillingPage() {
   const [page, setPage] = useState(1);
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
 
-  const { data, isLoading, error } = useInvoices({ page: 1, limit: 100 });
+  const { data, isLoading, error } = useInvoices({ page, limit: PAGE_SIZE, search, status: statusTab === 'all' ? undefined : statusTab });
+  const summaryQuery = useInvoiceSummary();
   const patientsQuery = usePatients({ limit: 100 });
   const companiesQuery = useCompanies();
 
   const allInvoices = data?.data ?? [];
   const patientNames = new Map((patientsQuery.data?.data ?? []).map((patient) => [patient.id, `${patient.first_name} ${patient.last_name}`.trim()]));
   const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
-  const statusFiltered = statusTab === 'all' ? allInvoices : allInvoices.filter((invoice) => invoice.status === statusTab);
-
-  const filtered = search.trim()
-    ? statusFiltered.filter((inv: Invoice) => {
-        const patientName = getPatientName(inv.patient_id, patientNames, patientsQuery.isLoading).toLowerCase();
-        const companyName = inv.company_id ? companyNames.get(inv.company_id) ?? '' : '';
-        return patientName.includes(search.toLowerCase())
-          || companyName.toLowerCase().includes(search.toLowerCase())
-          || (inv.invoice_number ?? '').toLowerCase().includes(search.toLowerCase());
-      })
-    : statusFiltered;
-
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-  const pagedInvoices = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const paidInvoiceValue = allInvoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + invoice.total_amount, 0);
-  const issuedUnpaidValue = allInvoices.filter((invoice) => invoice.status === 'issued' || invoice.status === 'unpaid').reduce((sum, invoice) => sum + invoice.total_amount, 0);
+  const filtered = allInvoices;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pagedInvoices = allInvoices;
+  const paidInvoiceValue = summaryQuery.data?.paidValue ?? 0;
+  const issuedUnpaidValue = summaryQuery.data?.unpaidValue ?? 0;
 
   return (
     <div className="space-y-5">
@@ -80,10 +70,10 @@ export default function BillingPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard title="Total Invoices" value={data?.total ?? 0} icon={Receipt} iconColor="text-blue-600" subtitle="From EHR" />
+        <StatCard title="Total Invoices" value={summaryQuery.data?.total ?? 0} icon={Receipt} iconColor="text-blue-600" subtitle="From EHR" />
         <StatCard title="Paid Invoice Value" value={paidInvoiceValue} icon={CircleDollarSign} iconColor="text-emerald-600" isCurrency subtitle="Invoices marked paid" />
         <StatCard title="Issued / Unpaid Value" value={issuedUnpaidValue} icon={Wallet} iconColor="text-amber-600" isCurrency subtitle="Based on invoice status" />
-        <StatCard title="Draft" value={allInvoices.filter((invoice) => invoice.status === 'draft').length} icon={CreditCard} iconColor="text-slate-500" />
+        <StatCard title="Draft" value={summaryQuery.data?.draft ?? 0} icon={CreditCard} iconColor="text-slate-500" />
       </div>
 
       {/* Status tabs + table */}

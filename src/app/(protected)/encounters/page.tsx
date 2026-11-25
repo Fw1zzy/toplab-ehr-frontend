@@ -46,7 +46,7 @@ export default function EncountersPage() {
   const [page, setPage] = useState(1);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 
-  const { data, isLoading, error } = useEncounters({ page: 1, limit: 100 });
+  const { data, isLoading, error } = useEncounters({ page, limit: PAGE_SIZE, status, search, kind: activeTab });
   const patientsQuery = usePatients({ limit: 100 });
   const companiesQuery = useCompanies();
   const requestsQuery = useQuery({
@@ -58,25 +58,10 @@ export default function EncountersPage() {
   const companyNames = new Map((companiesQuery.data?.data ?? []).map((company) => [company.id, company.name]));
   const requestNames = new Map((requestsQuery.data?.data ?? []).map((request) => [request.id, request.company_code || request.request_type]));
 
-  // Tab Filtering
-  const typeFiltered = activeTab === 'all' 
-    ? encounters 
-    : activeTab === 'outpatient' 
-      ? encounters.filter((e: Encounter) => !e.encounter_type || e.encounter_type.startsWith('OPD'))
-      : encounters.filter((e: Encounter) => e.encounter_type?.startsWith('PEME') || e.encounter_type?.startsWith('APE'));
-
-  const statusFiltered = status ? typeFiltered.filter((encounter: Encounter) => encounter.status === status) : typeFiltered;
-  const filtered = search.trim()
-    ? statusFiltered.filter((e: Encounter) => {
-        const name = getPatientName(e.patient_id, patientNames, patientsQuery.isLoading).toLowerCase();
-        return name.includes(search.toLowerCase())
-          || (e.service ?? '').toLowerCase().includes(search.toLowerCase())
-          || (e.encounter_type ?? '').toLowerCase().includes(search.toLowerCase());
-      })
-    : statusFiltered;
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-  const pagedEncounters = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const filtered = encounters;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pagedEncounters = encounters;
 
   function updateSearch(value: string) {
     setSearch(value);

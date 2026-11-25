@@ -31,7 +31,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
     '/queue', '/lab-results', '/ai-clinical-tools',
     '/billing', '/billing/invoices',
     '/inventory', '/services', '/staff',
-    '/companies', '/corporate-requests',
+    '/companies', '/corporate-requests', '/questionnaire-responses',
     '/analytics', '/reports', '/settings',
   ],
 };

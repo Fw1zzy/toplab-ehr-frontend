@@ -1,23 +1,90 @@
-<!DOCTYPE html>
-<html lang="en-US" dir="ltr">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>404 | LikhaERP Docs</title>
-    <meta name="description" content="Not Found">
-    <meta name="generator" content="VitePress v2.0.0-alpha.17">
-    <link rel="preload stylesheet" href="/assets/style.CJHPI2XD.css" as="style">
-    <link rel="preload stylesheet" href="/vp-icons.css" as="style">
-    
-    <script type="module" src="/assets/app.CsZRlg0r.js"></script>
-    <link rel="preload" href="/assets/inter-roman-latin.Cy4MYw_J.woff2" as="font" type="font/woff2" crossorigin="">
-    <link rel="icon" href="/logo.png">
-    <script id="check-dark-mode">(()=>{const e=localStorage.getItem("vitepress-theme-appearance")||"auto",a=window.matchMedia("(prefers-color-scheme: dark)").matches;(!e||e==="auto"?a:e==="dark")&&document.documentElement.classList.add("dark")})();</script>
-    <script id="check-mac-os">document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));</script>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script>window.__VP_HASH_MAP__=JSON.parse("{\"api-quickstart.md\":\"psInf3XE\",\"auth-quickstart.md\":\"8Sca0FMV\",\"auth_index.md\":\"D-nop63T\",\"auth_login.md\":\"DQLwYtN6\",\"auth_logout.md\":\"CrkCRop-\",\"auth_oauth-provider.md\":\"CFJhYQFV\",\"auth_oauth.md\":\"D330ozT-\",\"auth_password-request.md\":\"BWXLiGuT\",\"auth_password-reset.md\":\"B4DVVkIC\",\"auth_refresh.md\":\"BJ0UoJ5e\",\"automation-quickstart.md\":\"fz3NQhwk\",\"automation_data-chain.md\":\"DyYUgE15\",\"automation_flows.md\":\"8wDyLLgO\",\"automation_index.md\":\"CMOSqkle\",\"automation_operations.md\":\"BUKUNtW1\",\"automation_triggers.md\":\"DFcdBVgZ\",\"computed-fields.md\":\"CQ4OO311\",\"data-model-setup.md\":\"9OMxrVfZ\",\"files_access.md\":\"sGOEsg74\",\"files_index.md\":\"NJgS11Um\",\"files_readme.md\":\"BTfnYQJ1\",\"files_transform.md\":\"CLJh9Pzj\",\"files_upload.md\":\"DtqABkuv\",\"filters.md\":\"A4Frl0WY\",\"guides_agent-skill.md\":\"D1ZKp2LX\",\"guides_api-notes.md\":\"BjtgZ6E1\",\"guides_automation-recipes.md\":\"BvEWipm-\",\"guides_dashboards-panels.md\":\"Belis07U\",\"guides_data-modeling.md\":\"BspQWZ5O\",\"guides_index.md\":\"DiPWeNWk\",\"guides_permissions-tenancy.md\":\"DYaBnIWC\",\"guides_print-templates.md\":\"C7gbqT7-\",\"guides_public-endpoints.md\":\"DwJC20Sl\",\"index.md\":\"D9ophCo_\",\"items_create-multiple.md\":\"1pYosgz2\",\"items_create.md\":\"npmtOOda\",\"items_delete-multiple.md\":\"BlY_2RLN\",\"items_delete.md\":\"COSlI8sj\",\"items_get.md\":\"D-1Qg5Dp\",\"items_index.md\":\"C6dk5ywD\",\"items_list.md\":\"i-k_m0UI\",\"items_singleton.md\":\"Bh_lfYRG\",\"items_update-multiple.md\":\"DEy_xNzb\",\"items_update.md\":\"BpCktgyK\",\"query-parameters.md\":\"mxZ-xHFd\",\"readme.md\":\"CubNprN_\",\"realtime-quickstart.md\":\"BB2qC33L\",\"realtime_actions.md\":\"DSUiuQrv\",\"realtime_authentication.md\":\"CnbvTuba\",\"realtime_custom-websocket-handlers.md\":\"B23xbKeH\",\"realtime_index.md\":\"D5s7SE8i\",\"realtime_readme.md\":\"8wQM1Jsg\",\"realtime_subscriptions.md\":\"Qb2czhQB\"}");window.__VP_SITE_DATA__=JSON.parse("{\"lang\":\"en-US\",\"dir\":\"ltr\",\"title\":\"LikhaERP Docs\",\"description\":\"LikhaERP Docs\",\"base\":\"/\",\"head\":[],\"router\":{\"prefetchLinks\":true},\"appearance\":true,\"themeConfig\":{\"search\":{\"provider\":\"local\"},\"logo\":{\"src\":\"/logo.png\",\"alt\":\"Likha ERP\",\"height\":32},\"nav\":[{\"text\":\"Home\",\"link\":\"/\"},{\"text\":\"Quickstarts\",\"items\":[{\"text\":\"API Quickstart\",\"link\":\"/api-quickstart\"},{\"text\":\"Auth Quickstart\",\"link\":\"/auth-quickstart\"},{\"text\":\"Automation Quickstart\",\"link\":\"/automation-quickstart\"},{\"text\":\"Realtime Quickstart\",\"link\":\"/realtime-quickstart\"}]},{\"text\":\"Core Concepts\",\"items\":[{\"text\":\"Data Model Setup\",\"link\":\"/data-model-setup\"},{\"text\":\"Computed Fields\",\"link\":\"/computed-fields\"},{\"text\":\"Filters\",\"link\":\"/filters\"},{\"text\":\"Query Parameters\",\"link\":\"/query-parameters\"}]},{\"text\":\"Guides\",\"items\":[{\"text\":\"API Notes & Best Practices\",\"link\":\"/guides/api-notes\"},{\"text\":\"Data Modeling Recipes\",\"link\":\"/guides/data-modeling\"},{\"text\":\"Permissions & Multi-Tenancy\",\"link\":\"/guides/permissions-tenancy\"},{\"text\":\"Automation Recipes\",\"link\":\"/guides/automation-recipes\"},{\"text\":\"Dashboards & Panels\",\"link\":\"/guides/dashboards-panels\"},{\"text\":\"Print Templates\",\"link\":\"/guides/print-templates\"},{\"text\":\"Public Endpoints & Portals\",\"link\":\"/guides/public-endpoints\"},{\"text\":\"AI Agent Skill\",\"link\":\"/guides/agent-skill\"}]},{\"text\":\"Guide\",\"link\":\"/README\"}],\"sidebar\":[{\"text\":\"Getting Started\",\"items\":[{\"text\":\"Home\",\"link\":\"/\"},{\"text\":\"API Quickstart\",\"link\":\"/api-quickstart\"},{\"text\":\"Auth Quickstart\",\"link\":\"/auth-quickstart\"},{\"text\":\"Automation Quickstart\",\"link\":\"/automation-quickstart\"},{\"text\":\"Realtime Quickstart\",\"link\":\"/realtime-quickstart\"}]},{\"text\":\"Core Concepts\",\"items\":[{\"text\":\"Data Model Setup\",\"link\":\"/data-model-setup\"},{\"text\":\"Computed Fields\",\"link\":\"/computed-fields\"},{\"text\":\"Filters\",\"link\":\"/filters\"},{\"text\":\"Query Parameters\",\"link\":\"/query-parameters\"}]},{\"text\":\"Authentication\",\"items\":[{\"text\":\"Overview\",\"link\":\"/auth/\"},{\"text\":\"Login\",\"link\":\"/auth/login\"},{\"text\":\"Logout\",\"link\":\"/auth/logout\"},{\"text\":\"Password Reset\",\"link\":\"/auth/password-reset\"},{\"text\":\"Refresh Token\",\"link\":\"/auth/refresh\"},{\"text\":\"OAuth\",\"link\":\"/auth/oauth\"},{\"text\":\"OAuth Provider\",\"link\":\"/auth/oauth-provider\"},{\"text\":\"Password Request\",\"link\":\"/auth/password-request\"}]},{\"text\":\"Automation\",\"items\":[{\"text\":\"Overview\",\"link\":\"/automation/\"},{\"text\":\"Triggers\",\"link\":\"/automation/triggers\"},{\"text\":\"Flows\",\"link\":\"/automation/flows\"},{\"text\":\"Operations\",\"link\":\"/automation/operations\"},{\"text\":\"Data Chain\",\"link\":\"/automation/data-chain\"}]},{\"text\":\"Files\",\"items\":[{\"text\":\"Overview\",\"link\":\"/files/\"},{\"text\":\"Upload\",\"link\":\"/files/upload\"},{\"text\":\"Access\",\"link\":\"/files/access\"},{\"text\":\"Transform\",\"link\":\"/files/transform\"}]},{\"text\":\"Items\",\"items\":[{\"text\":\"List\",\"link\":\"/items/list\"},{\"text\":\"Get\",\"link\":\"/items/get\"},{\"text\":\"Create\",\"link\":\"/items/create\"},{\"text\":\"Update\",\"link\":\"/items/update\"},{\"text\":\"Delete\",\"link\":\"/items/delete\"},{\"text\":\"Singleton\",\"link\":\"/items/singleton\"},{\"text\":\"Create Multiple\",\"link\":\"/items/create-multiple\"},{\"text\":\"Update Multiple\",\"link\":\"/items/update-multiple\"},{\"text\":\"Delete Multiple\",\"link\":\"/items/delete-multiple\"}]},{\"text\":\"Realtime\",\"items\":[{\"text\":\"Overview\",\"link\":\"/realtime/\"},{\"text\":\"Subscriptions\",\"link\":\"/realtime/subscriptions\"},{\"text\":\"Actions\",\"link\":\"/realtime/actions\"},{\"text\":\"Authentication\",\"link\":\"/realtime/authentication\"},{\"text\":\"Custom WebSocket Handlers\",\"link\":\"/realtime/custom-websocket-handlers\"}]},{\"text\":\"Guides\",\"items\":[{\"text\":\"Overview\",\"link\":\"/guides/\"},{\"text\":\"API Notes & Best Practices\",\"link\":\"/guides/api-notes\"},{\"text\":\"Data Modeling Recipes\",\"link\":\"/guides/data-modeling\"},{\"text\":\"Permissions & Multi-Tenancy\",\"link\":\"/guides/permissions-tenancy\"},{\"text\":\"Automation Recipes\",\"link\":\"/guides/automation-recipes\"},{\"text\":\"Dashboards & Panels\",\"link\":\"/guides/dashboards-panels\"},{\"text\":\"Print Templates\",\"link\":\"/guides/print-templates\"},{\"text\":\"Public Endpoints & Portals\",\"link\":\"/guides/public-endpoints\"},{\"text\":\"AI Agent Skill\",\"link\":\"/guides/agent-skill\"}]}],\"socialLinks\":[{\"icon\":{\"svg\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" viewBox=\\\"0 0 24 24\\\" fill=\\\"none\\\" style=\\\"fill:none\\\" stroke=\\\"var(--vp-c-brand-1)\\\" stroke-width=\\\"2\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\"><circle cx=\\\"12\\\" cy=\\\"12\\\" r=\\\"10\\\"></circle><line x1=\\\"2\\\" y1=\\\"12\\\" x2=\\\"22\\\" y2=\\\"12\\\"></line><path d=\\\"M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z\\\"></path></svg>\"},\"link\":\"https://likhaerp.com\"}]},\"locales\":{},\"scrollOffset\":134,\"cleanUrls\":false,\"additionalConfig\":{}}");</script>
-    
-  </body>
-</html>
+---
+name: likha-erp-api
+description: Project skill for working with Likha ERP platform APIs — collections, fields, relations, flows, dashboards, print templates, and public endpoints. Read before any Likha ERP API work.
+---
+
+# Likha ERP API
+
+Read before any API work on a Likha ERP project. Every rule below came from a real production failure.
+
+## Conventions
+
+- `https://your-domain.com` — project URL. Token in env var `LIKHA_TOKEN`, never committed.
+- Prefix every artifact your app creates (collections, junctions, flows, roles, policies) with a consistent `app_`-style prefix. On shared instances, never touch collections outside your prefix.
+- System collections: `system_users`, `system_files`, `system_relations`, `system_flows`, `system_panels`, `system_permissions`, `system_access`.
+
+## Request layer
+
+- **Send a conventional User-Agent.** Hosted instances sit behind a WAF that blocks `Python-urllib/*` and similar on writes (`403 error code: 1010`). Always send `User-Agent: curl/8.5.0` or use curl directly. GETs are unaffected.
+- **URL-encode filter params** — `filter%5Bkey%5D%5B_eq%5D`, not raw brackets (intermittent proxy failures).
+- **Missing-field GETs return 403, not 404.** Existence-check via `GET /fields/{col}` + search, or POST and tolerate 400.
+- **Write effects are async** — flows stamp fields after the POST returns; re-fetch before verifying.
+- **Readonly is a UI concept** — readonly fields accept explicit values via API (backdating seeds/migrations).
+- **Creating at final status skips `items.update` flows** — set derived fields (timestamps, warranties, totals) explicitly in the create payload.
+- **No dedupe on `/panels`, `/dashboards`, `/flows`, `/operations`** — GET-filter by name before POSTing. Build op chains tail-first, then PATCH `flow.operation` to the first op's id.
+- **NEVER PATCH `/relations` — it crashes the server.** Any `PATCH /relations/{collection}/{field}` exits the process mid-request; nodemon does NOT auto-restart (type `rs` + Enter; docker → `docker compose restart`). `POST /relations` is safe. To change relation behavior post-creation, fix at DB level via `likha_sql` + `POST /utils/cache/clear {"cache":"system"}` — or recreate the relation.
+- **Shell `$` expansion corrupts options** — `python -c "... $trigger ..."` inside double quotes silently strips `$trigger`/`$last`/`$full` → flows die silently. Always patch ops containing `$` tokens from a script file, never inline. Verify stored options after.
+- **Windows**: open HTTP-fetched JSON with `encoding='utf-8'` (cp1252 dies on smart quotes).
+
+## Data model
+
+- **Folders** = collection with `schema: null`; membership = `PATCH /collections/{name} meta.group="<Folder>"`.
+- **`meta.accountability:"all"` does NOT create audit fields.** Create `user_created`/`date_created`/`user_updated`/`date_updated` explicitly (uuid/timestamp, specials `user-created`/`date-created`/`user-updated`/`date-updated`, readonly+hidden), then POST the two M2O relations to `system_users` — else "relationship not configured".
+- **Reverse O2M aliases** come from `meta.one_field` on the relation POST — then PATCH `/fields/{col}/{alias}` to `interface: list-o2m`, set `options.template`, and `meta.group` for tab placement.
+- **M2M**: `junction_field` on BOTH junction→parent relations + alias `list-m2m`/`files`. Missing second side = "relationship not configured". Fix via `likha_sql`, not PATCH /relations.
+- **Prefer O2M junction-with-payload** when links carry data (role, price) — inline-editable via `list-o2m`, no `junction_field` issues.
+- **Junction FK fields must not be `hidden`** — breaks `list-m2m`/`files`.
+- **Cascade deletes**: `one_deselect_action` can't be PATCHed — delete junction rows first, or DB FK `ON DELETE CASCADE` + update the relations registry + cache clear.
+- **Tab layouts**: group field = `type: alias`, `special: ["alias","group","no-data"]`; children point via `meta.group`; `meta.translations` for tab labels.
+- **Singletons**: POST → `ROUTE_NOT_FOUND`; use PATCH.
+- **list-o2m**: `options.fields:["a","b"]` renders real table columns; add `options.sortField`, `enableLink/Create/Select/SearchFilter`. Hide pure junctions via collection `meta.hidden:true`. M2O pickers need `options.template` or they show raw UUIDs.
+- **Geometry fields**: `geometry.Point` / `geometry.MultiPolygon` / `geometry` — never `type:"point"`. GeoJSON payloads are **lng first**. Map options: `{basemap:"OpenStreetMap", defaultView:{center:{lat,lng},zoom}}` (no token needed).
+
+## Permissions & tenancy
+
+- **`$CURRENT_USER` is NOT a valid `schema.default_value`** (500 invalid uuid) — use permission presets: `presets: {"created_by": "$CURRENT_USER"}` on each role's create permission. Deep paths like `$CURRENT_USER.app_store` work in presets and filters.
+- **Multi-tenant pattern**: tenant root collection; `tenant` M2O on every entity + on `system_users`; role filter `{tenant:{_eq:"$CURRENT_USER.tenant"}}`; junctions filter via parent; create presets stamp tenant; admin role unfiltered. Serials embed tenant code (`DOC-SITE1-2026-0001`).
+- **Append-only collections**: remove update/delete perms for staff (managers keep all); `created_by` readonly + preset; flow-stamped fields readonly (blank = pending).
+
+## Automation
+
+- **Event flow options**: `scope` = EVENT names (`["items.create"]`), `collections` = collection names, `type: "action"`, `async: true`. Collections in `scope` → never fires, silently. `{{$trigger.collection}}` interpolates the collection name → one dynamic flow across many collections.
+- **`$trigger` shape** for items.update = `{payload:{changedFields}, keys:[ids], collection, event}` — `payload` is NOT double-nested.
+- **Gate inside Run Script, not Condition** — an op that `throw`s routes to `reject` (null) and stops the chain cleanly.
+- **`resolve`/`reject` targets are unique** — unlink existing resolve before inserting an op.
+- **`emitEvents: false`** on every op that writes back to the trigger collection (loop prevention).
+- **`item-update` key**: literal, `{{$last.key}}`, or `{{$trigger.keys[0]}}`.
+- **Serial numbering**: items.create event → `likha_sql` computes next `PREFIX-YYYY-NNNN` → item-update writes `{{sql_1.rows.0.serial}}`.
+- **Webhook triggers are GET** — `POST /flows/trigger/{id}` 403s unless `options.method:"POST"`. Response body = last op's return. Set `options.error_on_reject:true` on API/chart flows.
+- **`likha_sql` returns `{sql, binding, rows:[...]}`** — template `{{sql_1.rows.0.col}}`; in Run Script unwrap `data.sql_1.rows || data.sql_1`. `UPDATE` returns `rows:[]`. `{{sql_1.0.x}}` stores literal "undefined". Interpolated input is NOT escaped — `String(s).replace(/'/g,"''")` in a validate op first.
+- **Run Script output must be JSON-safe** — no functions (`formatter` → "could not be cloned"); use string templates `'{b}: {c}'`.
+- **Send Email needs `EMAIL_*` env** on the server or silently sends nothing.
+
+## Dashboards & panels
+
+- **`GET /extensions?limit=-1`** enumerates all panel/interface/operation types (`schema.type` + `schema.name`). Type ids are NOT inferable from display names — read them here. Custom ops like `likha_sql` are extensions too. `GET /extensions/sources/index.js` serves the deployed bundle — grep it to verify a deploy landed; extension updates need a backend redeploy + client hard-refresh.
+- **Panel types**: `echarts-panel`, `likhaHeatmap-panel`, `choropleth-map-panel`, `table-view-panel`, `calendar-panel`, `likhaButtonLink-panel`, `flow-triggers-panel`.
+- **`echarts-panel`** options: `{flow:{key:<flow-uuid>, collection:"system_flows"}}`. Panel GETs `/flows/trigger/{id}`; last op must return a plain ECharts option (no functions). Recipe: webhook trigger, `accountability:"all"`, `error_on_reject:true`; ops `likha_sql` → Run Script returning the option.
+- **Metric panel**: `{collection, field:"id", function:count|sum|avg|min|max, filter:{...}, sortField:null}` — `$NOW` works in filters. Pre-verify with `/items/{col}?aggregate[count]=id`.
+- **Grid**: dashboard ~56 units wide; metrics ~8×9, echarts ~27×22; `show_header:true` renders `name`.
+- **`likhaHeatmap-panel`**: queries the collection itself (no flow). Options `{collection, geoField, field?, filter?, popupFields?, autoFitBounds, defaultCenter(GeoJSON Point), defaultZoom, colorScheme(coolwarm|viridis|plasma|grayscale|spectral), heatmapRadius, heatmapIntensity, showCircleLayer, enableClustering, clusterRadius, clusterAggregation(count|sum|avg|min|max), clusterCategories}`. `field` must be a real numeric field or OMIT it. Options UI is buggy — configure via `PATCH /panels/{id}`.
+- **`csv` fields** store a JSON-array string — expand in SQL with `jsonb_array_elements_text(col::jsonb)`, never `string_to_array`.
+
+## Print templates
+
+- **`print` field**: `type:"alias"`, `special:["alias","no-data"]`, `interface:"print"`, `options:{templateSelection:{collection:"print_template", key:"<template-row-uuid>"}, fields:["*.*.*"]}`.
+- **LiquidJS context** = item resolved to `fields` depth: M2O → nested object; O2M → array of junction rows. Filters `default`, `date`, `upcase`, `capitalize`, `replace`, `newline_to_br`, `{% case %}` all work.
+- **Letterhead**: `settings` M2O → settings singleton, stamped by an items.create flow (`emitEvents:false`, `permissions:"$full"`); backfill once. Template reads `{{ settings.org_name }}`. Multi-tenant: one settings row per tenant, templates unchanged.
+- **`csv` fields reach templates as JSON strings** — `{% assign t = field | split: ',' %}` then `| replace:'[','' | replace:']','' | replace:'"',''`.
+- **Multiple `print` alias fields per collection are fine** — separate `templateSelection` each.
+- **QR codes**: `api.qrserver.com` img → portal verify URL. Re-fetch template UUIDs by name — terminal output clips long ids.
+
+## Public endpoints & portals
+
+- **Public webhook flow**: `trigger:"webhook"`, `accountability:"all"`, `options.method:"GET"|"POST"`. `data.$trigger.body` / `data.$trigger.query` in ops; last op's return = response body; thrown error → `{}` (clients treat as not-found).
+- **Chain**: validate (required fields + `String(s).replace(/'/g,"''")` escape) → `likha_sql` → respond (sanitized/masked).
+- **Raw `likha_sql` INSERT emits NO items.create** — serial/stamp flows are bypassed; compute serial + due dates in the INSERT's CTE.
+- **Shared-secret tracking**: ref + mobile number pairs; **mask PII** in verify responses (`first_name || ' ' || left(last_name,1) || '.'`).
+- **Portal SPA**: static host + `basename`, GH-Pages 404→`sessionStorage` bounce; routes `/` `/request` `/track/:ref/:key` `/verify/:serial`; verify UNIONs printable collections.
+
+Full guides: https://docs.likhaerp.com/guides/
